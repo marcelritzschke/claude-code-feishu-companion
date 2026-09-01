@@ -559,3 +559,117 @@ func TestAnsweredPromptsAreForgotten(t *testing.T) {
 		t.Errorf("the daemon still holds %d prompts and %d sessions' cards", prompts, sessions)
 	}
 }
+
+// Card callbacks are a separate Feishu subscription from card delivery, and
+// an app can send perfectly good cards whose every button is inert. Picking
+// a session by typing its number has to work on its own.
+func TestSessionCanBePickedByTyping(t *testing.T) {
+	d, _, l := fixture(t, session.Ready)
+	other := &link{}
+	d.reg.Attach("sess-2", 5252, "/work/frontend", session.Ready, other)
+
+	d.onMessage(context.Background(), feishu.Message{Text: "sessions"})
+	d.onMessage(context.Background(), feishu.Message{Text: "1"})
+	d.onMessage(context.Background(), feishu.Message{Text: "carry on"})
+
+	first := d.reg.List()[0]
+	got, ignored := l.sent(), other.sent()
+	if first.ID == "sess-2" {
+		got, ignored = other.sent(), l.sent()
+	}
+	if len(got) != 1 || got[0] != "carry on" {
+		t.Errorf("the picked session received %v, want the message", got)
+	}
+	if len(ignored) != 0 {
+		t.Errorf("the other session received %v", ignored)
+	}
+}
+
+// A number is resolved against the overview the user was looking at. If
+// that session has since ended, being told so is right; silently landing on
+// whatever now occupies that slot is not.
+func TestAStaleNumberPicksNothing(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+	d.onMessage(context.Background(), feishu.Message{Text: "sessions"})
+
+	d.reg.Remove("sess-1")
+	replacement := &link{}
+	d.reg.Attach("sess-2", 5252, "/work/frontend", session.Ready, replacement)
+
+	d.onMessage(context.Background(), feishu.Message{Text: "1"})
+	d.onMessage(context.Background(), feishu.Message{Text: "carry on"})
+
+	if got := replacement.sent(); len(got) != 0 {
+		t.Errorf("a stale number reached a different session: %v", got)
+	}
+	if got := l.sent(); len(got) != 0 {
+		t.Errorf("the ended session received %v", got)
+	}
+	if len(rec.texts) == 0 || !strings.Contains(rec.texts[0], "has ended") {
+		t.Errorf("answers = %v, want the user told the session is gone", rec.texts)
+	}
+}
+
+// A permission answered by typing must reach the session exactly as a tap
+// would, and settle the card the same way.
+func TestPermissionCanBeAnsweredByTyping(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+	d.onPermissionRequest(context.Background(), l, mcp.PermissionRequest{
+		RequestID: "abcde", ToolName: "Bash", InputPreview: `{"command":"npm install"}`,
+	})
+	cardID := rec.ids[0]
+
+	d.onMessage(context.Background(), feishu.Message{Text: "y abcde"})
+
+	l.mu.Lock()
+	verdicts := append([]string(nil), l.verdicts...)
+	injected := append([]string(nil), l.injected...)
+	l.mu.Unlock()
+	if len(verdicts) != 1 || verdicts[0] != "abcde:allow" {
+		t.Fatalf("verdicts = %v, want abcde:allow", verdicts)
+	}
+	if len(injected) != 0 {
+		t.Errorf("the answer was also pushed into the session as a message: %v", injected)
+	}
+	if settled := rec.updates[cardID]; len(settled) != 1 || !strings.Contains(settled[0], "Allowed") {
+		t.Errorf("the card settled to %v", settled)
+	}
+}
+
+// The permission card must spell out the typed form, because that is the
+// one that works when the buttons do not.
+func TestPermissionCardTeachesTheTypedAnswer(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+
+	d.onPermissionRequest(context.Background(), l, mcp.PermissionRequest{
+		RequestID: "abcde", ToolName: "Bash", InputPreview: `{"command":"npm install"}`,
+	})
+
+	if len(rec.cards) != 1 {
+		t.Fatalf("cards = %v", rec.titles(t))
+	}
+	if !strings.Contains(rec.cards[0], "y abcde") || !strings.Contains(rec.cards[0], "n abcde") {
+		t.Errorf("the card does not say how to answer by typing: %s", rec.cards[0])
+	}
+}
+
+// The ordinary case must not be swallowed by the reply forms: a message
+// that merely mentions a session goes to the selected one, as text.
+func TestOrdinaryMessagesAreNotMistakenForCommands(t *testing.T) {
+	d, _, l := fixture(t, session.Ready)
+	d.onMessage(context.Background(), feishu.Message{Text: "sessions"})
+	d.onMessage(context.Background(), feishu.Message{Text: "1"})
+
+	for _, text := range []string{
+		"yes, go ahead and do that",
+		"no, use the other approach",
+		"check whether 1 is off by one",
+	} {
+		d.onMessage(context.Background(), feishu.Message{Text: text})
+	}
+
+	got := l.sent()
+	if len(got) != 3 {
+		t.Fatalf("the session received %v, want all three messages", got)
+	}
+}

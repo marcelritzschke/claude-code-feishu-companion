@@ -45,6 +45,9 @@ type Daemon struct {
 	// awaiting holds messages pushed into a session that have not yet
 	// proved they arrived.
 	awaiting map[string]*delivery
+	// lastOverview is the sessions the last overview offered, in the order
+	// it numbered them, so a typed "2" means the second one the user saw.
+	lastOverview []string
 
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.

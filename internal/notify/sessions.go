@@ -2,6 +2,7 @@ package notify
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/marcelritzschke/wirelark/internal/mcp"
@@ -33,30 +34,44 @@ func OverviewCard(sessions []session.Session) (string, error) {
 	var (
 		bodies  []string
 		buttons []Button
+		offered int
 	)
 	for _, s := range sessions {
-		bodies = append(bodies, overviewRow(s))
-		if !s.Remote.Continuable() {
+		// Only the sessions that can be continued are numbered, because the
+		// number is an offer to talk to one, and offering a session that
+		// would refuse is worse than not offering it.
+		number := 0
+		if s.Remote.Continuable() {
+			offered++
+			number = offered
+		}
+		bodies = append(bodies, overviewRow(s, number))
+		if number == 0 {
 			continue
 		}
 		buttons = append(buttons, Button{
-			Label:  truncateRunes(s.Describe(), titleCap),
+			Label:  strconv.Itoa(number) + ". " + truncateRunes(s.Describe(), titleCap),
 			Action: Action{Kind: ActionSelect, Session: s.ID},
 		})
 	}
 
-	footer := "Pick a session to continue it."
-	if len(buttons) == 0 {
+	footer := "Tap a session, or reply with its number, to continue it."
+	if offered == 0 {
 		footer = "None of these sessions can be continued from here."
 	}
 	return card("blue", "Wirelark", "Your local Claude sessions", bodies, buttons, footer)
 }
 
 // overviewRow is one session as the overview reads it: a state anyone can
-// scan, the project, its work, and an honest word about reachability.
-func overviewRow(s session.Session) string {
+// scan, the project, its work, and an honest word about reachability. A
+// number is shown only for a session the user can pick by typing it.
+func overviewRow(s session.Session, number int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s **%s**", stateMark(s.State), s.Label())
+	if number > 0 {
+		fmt.Fprintf(&b, "%s **%d. %s**", stateMark(s.State), number, s.Label())
+	} else {
+		fmt.Fprintf(&b, "%s **%s**", stateMark(s.State), s.Label())
+	}
 	if s.Title != "" {
 		b.WriteString("\n" + truncateRunes(s.Title, titleCap))
 	}
@@ -111,12 +126,16 @@ func PermissionRelayCard(s session.Session, req mcp.PermissionRequest) (string, 
 
 	template, title := "orange", "⚠️ Permission requested"
 	allow, deny := stylePrimary, styleDefault
-	footer := "You can also answer in Claude Code."
+	note := "You can also answer in Claude Code."
 	if risk == RiskHigh {
 		template, title = "red", "🛑 Permission requested"
 		allow, deny = styleDefault, styleDanger
-		footer = "This action cannot easily be undone. Read it before allowing."
+		note = "This action cannot easily be undone. Read it before allowing."
 	}
+	// The typed form is spelled out because it is the one that always
+	// works: card buttons depend on a callback subscription this app may
+	// not have, and a prompt nobody can answer stops the session dead.
+	footer := "Or reply  y " + req.RequestID + "  to allow,  n " + req.RequestID + "  to deny.\n" + note
 
 	buttons := []Button{
 		{Label: "Allow once", Style: allow, Action: Action{

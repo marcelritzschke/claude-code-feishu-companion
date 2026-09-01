@@ -58,21 +58,22 @@ Message the Wirelark bot and it shows what is running on your computer:
 Wirelark
 Your local Claude sessions
 
-⚠️ frontend
+⚠️ 1. frontend
 Upgrade React
 Waiting for you · Remote ready
 
-🟢 payments-api
+🟢 2. payments-api
 Fix token refresh
 Working · Remote ready
 
 ⚪ wirelark
 Idle · Notifications only
 
-[ Upgrade React · frontend ]  [ Fix token refresh · payments-api ]
+[ 1. Upgrade React · frontend ]  [ 2. Fix token refresh · payments-api ]
 ```
 
-Pick one and Wirelark says which session you are now talking to. Everything
+Tap a session, or reply with its number, and Wirelark says which session you
+are now talking to. Everything
 you send after that goes to that session and no other - plain language, no
 command syntax. If the session is mid-turn, Wirelark says the message is
 queued rather than pretending it landed; if the session ends, the next
@@ -88,6 +89,15 @@ Completion, failure, and progress cards for a reachable session carry a
 next instruction is one gesture.
 
 Say `sessions` at any time to see the overview again.
+
+**Buttons are a convenience, not the contract.** Card callbacks are a
+separate Feishu subscription from card delivery, and an app can send
+perfectly good cards whose every button is inert. So everything a button
+does can be typed: a bare number picks that session from the last overview,
+and `y <id>` / `n <id>` answers a permission request using the id printed on
+its card. A bare `yes` is deliberately not accepted - it is one autocorrect
+away from approving a command you never read, and it is an ordinary thing to
+say to Claude.
 
 ### Permissions
 
@@ -106,6 +116,8 @@ In
 ~/work/payments-api
 
 [ Allow once ]  [ Deny ]
+
+Or reply  y abcde  to allow,  n abcde  to deny.
 ```
 
 The local dialog stays open the whole time and either answer ends it: the
@@ -150,9 +162,15 @@ if it cannot.
 
 The Feishu app needs the bot capability, `im:message:send_as_bot` (plus
 `contact:user.id:readonly` if you resolve your open_id by email), and - for
-continuation - `im:message`, event subscription in **long connection** mode
-with `im.message.receive_v1` subscribed, and card callbacks in long
-connection mode for the Allow and Deny buttons.
+continuation - `im:message` and event subscription in **long connection**
+mode with `im.message.receive_v1` subscribed.
+
+Card buttons need two more things, and are easy to miss because cards send
+fine without them: **Interactive Card** enabled under App Features → Bot,
+and the **`card.action.trigger`** event subscribed alongside
+`im.message.receive_v1`. Re-publish the app version afterwards, or the
+subscription does not take effect. Without these, buttons report that the
+callback is not configured and you use the typed replies instead.
 
 Config lives at `~/.config/wirelark/config.toml` (0600):
 

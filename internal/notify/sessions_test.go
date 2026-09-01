@@ -68,6 +68,19 @@ func TestOverviewCard(t *testing.T) {
 			t.Errorf("button = %+v", b)
 		}
 	}
+
+	// Card callbacks are a separate Feishu subscription from card delivery,
+	// so the overview has to be usable by typing as well as by tapping.
+	// The numbers must run 1..n over exactly the sessions that are offered.
+	if !strings.Contains(card, "1. frontend") || !strings.Contains(card, "2. payments-api") {
+		t.Errorf("continuable sessions are not numbered for a typed reply: %s", card)
+	}
+	if strings.Contains(card, "3. wirelark") {
+		t.Errorf("a session that cannot be continued was given a number: %s", card)
+	}
+	if !strings.Contains(card, "reply with its number") {
+		t.Errorf("the overview does not say a number can be typed: %s", card)
+	}
 }
 
 // The overview must never leak the identifiers Wirelark works with.
@@ -282,5 +295,18 @@ func TestParseAction(t *testing.T) {
 	}
 	if _, ok := ParseAction([]byte(`not json`)); ok {
 		t.Error("undecodable card values must not parse")
+	}
+}
+
+// The typed answer is the one that always works, so the card has to carry
+// it rather than assume the buttons will do.
+func TestPermissionCardCarriesTheTypedAnswer(t *testing.T) {
+	card, err := PermissionRelayCard(session.Session{ID: "s1", Dir: "/work/api"},
+		mcp.PermissionRequest{RequestID: "abcde", ToolName: "Bash", InputPreview: `{"command":"npm install"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "y abcde") || !strings.Contains(card, "n abcde") {
+		t.Errorf("the card does not spell out how to answer by typing: %s", card)
 	}
 }

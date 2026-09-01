@@ -22,7 +22,11 @@ var overviewWords = map[string]bool{
 
 // onMessage handles one thing the user said in Feishu. Almost everything
 // they say is meant for a Claude Code session; the exceptions are asking to
-// see the sessions and picking one.
+// see the sessions, picking one, and answering a permission request.
+//
+// Those three are checked first and are the same actions the card buttons
+// perform, so a Feishu app whose card callbacks are not configured is
+// merely less convenient rather than unusable.
 func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
@@ -30,6 +34,20 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 	}
 	if overviewWords[strings.ToLower(strings.Trim(text, " ?."))] {
 		d.showOverview(ctx)
+		return
+	}
+	if requestID, allow, ok := parseVerdict(text); ok {
+		verdict := notify.VerdictDeny
+		if allow {
+			verdict = notify.VerdictAllow
+		}
+		d.answerPermission(ctx, notify.Action{
+			Kind: notify.ActionPermit, Request: requestID, Verdict: verdict,
+		}, "")
+		return
+	}
+	if id, ok := d.pickFromOverview(text); ok {
+		d.selectSession(ctx, id)
 		return
 	}
 
@@ -43,6 +61,26 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		return
 	}
 	d.sendToSession(ctx, s, text)
+}
+
+// pickFromOverview resolves a numbered reply against the overview the user
+// is actually looking at, not against the current list.
+//
+// The distinction matters: a session can end between the overview being
+// sent and the reply arriving, and resolving "2" against a list that has
+// since shifted would deliver the message to a session the user never
+// chose. Resolved this way, a stale number names a session that is gone,
+// and being told so is the correct outcome.
+func (d *Daemon) pickFromOverview(text string) (string, bool) {
+	d.mu.Lock()
+	listed := append([]string(nil), d.lastOverview...)
+	d.mu.Unlock()
+
+	i, ok := parsePick(text, len(listed))
+	if !ok {
+		return "", false
+	}
+	return listed[i], true
 }
 
 // sendToSession pushes the user's message into the session they selected,
@@ -84,9 +122,22 @@ func deliveryAnswer(s session.Session, before session.State) string {
 	}
 }
 
-// showOverview answers "what is running on my computer".
+// showOverview answers "what is running on my computer", and remembers
+// exactly which sessions it offered so a numbered reply means what the user
+// saw when they typed it.
 func (d *Daemon) showOverview(ctx context.Context) {
-	card, err := notify.OverviewCard(d.reg.List())
+	sessions := d.reg.List()
+	offered := make([]string, 0, len(sessions))
+	for _, s := range sessions {
+		if s.Remote.Continuable() {
+			offered = append(offered, s.ID)
+		}
+	}
+	d.mu.Lock()
+	d.lastOverview = offered
+	d.mu.Unlock()
+
+	card, err := notify.OverviewCard(sessions)
 	d.sendCard(ctx, card, err)
 }
 

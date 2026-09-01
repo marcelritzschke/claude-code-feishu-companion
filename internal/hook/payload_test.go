@@ -55,7 +55,12 @@ func TestSubagent(t *testing.T) {
 }
 
 func TestHandled(t *testing.T) {
-	for _, e := range []string{EventPermissionRequest, EventPostToolUse, EventStop, EventStopFailure} {
+	for _, e := range []string{
+		EventPermissionRequest, EventPostToolUse, EventStop, EventStopFailure,
+		// The lifecycle events carry no notification, but the daemon needs
+		// them to know which sessions exist and what each is doing.
+		EventSessionStart, EventSessionEnd, EventUserPromptSubmit,
+	} {
 		p, _ := Decode(strings.NewReader(`{"hook_event_name":"` + e + `"}`))
 		if !p.Handled() {
 			t.Errorf("%s should be handled", e)
@@ -66,8 +71,7 @@ func TestHandled(t *testing.T) {
 	if !p.Handled() {
 		t.Error("PreToolUse on AskUserQuestion should be handled")
 	}
-	for _, e := range []string{"PreToolUse", "Notification", "SessionStart", "SessionEnd",
-		"SubagentStop", "UserPromptSubmit", "", "Stop2"} {
+	for _, e := range []string{"PreToolUse", "Notification", "SubagentStop", "", "Stop2"} {
 		p, _ := Decode(strings.NewReader(`{"hook_event_name":"` + e + `","tool_name":"Bash"}`))
 		if p.Handled() {
 			t.Errorf("%q should not be handled", e)
@@ -103,5 +107,15 @@ func TestProjectLabelWindowsPath(t *testing.T) {
 	// A volume root has no project name; showing the path beats inventing one.
 	if got := (&Payload{Cwd: `C:\`}).ProjectLabel(); got != `C:\` {
 		t.Errorf("project label = %q, want %q", got, `C:\`)
+	}
+}
+
+// The daemon handles events from every session at once, so its own
+// environment must never decide which project a card names.
+func TestProjectLabelPrefersTheEventsOwnProject(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", "/home/user/whichever-session-started-the-daemon")
+	p := &Payload{Cwd: "/tmp/somewhere", ProjectDir: "/home/user/payments-api"}
+	if got := p.ProjectLabel(); got != "payments-api" {
+		t.Errorf("ProjectLabel() = %q, want the project the event came from", got)
 	}
 }

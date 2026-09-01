@@ -18,6 +18,7 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
 	"github.com/marcelritzschke/wirelark/internal/config"
+	"github.com/marcelritzschke/wirelark/internal/paths"
 	"github.com/marcelritzschke/wirelark/internal/secfile"
 )
 
@@ -153,14 +154,14 @@ type cacheEntry struct {
 	ExpireAt time.Time `json:"expire_at"`
 }
 
-// newDiskTokenCache returns a cache at
-// <user cache dir>/wirelark/token.json.
+// newDiskTokenCache returns a cache at token.json in Wirelark's private
+// directory.
 func newDiskTokenCache() (larkcore.Cache, error) {
-	dir, err := os.UserCacheDir()
+	path, err := paths.File("token.json")
 	if err != nil {
-		return nil, fmt.Errorf("resolve user cache dir: %w", err)
+		return nil, err
 	}
-	return &diskTokenCache{path: filepath.Join(dir, "wirelark", "token.json")}, nil
+	return &diskTokenCache{path: path}, nil
 }
 
 func (d *diskTokenCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
@@ -200,4 +201,32 @@ func (d *diskTokenCache) Get(ctx context.Context, key string) (string, error) {
 		return "", nil // miss
 	}
 	return e.Value, nil
+}
+
+// SendText delivers a plain text message. Cards are for what the user reads
+// and acts on; a short confirmation that their message reached a session is
+// neither, and a card for it would turn every message into two.
+func (c *Client) SendText(ctx context.Context, text string) (string, error) {
+	content, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return "", err
+	}
+	resp, err := c.lc.Im.Message.Create(ctx, larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(receiveIDType(c.cfg.OpenIDKind)).
+		Body(larkim.NewCreateMessageReqBodyBuilder().
+			MsgType(larkim.MsgTypeText).
+			ReceiveId(c.cfg.OpenID).
+			Content(string(content)).
+			Build()).
+		Build())
+	if err != nil {
+		return "", fmt.Errorf("feishu request: %w", err)
+	}
+	if !resp.Success() {
+		return "", apiError(resp.CodeError, resp.RequestId())
+	}
+	if resp.Data == nil || resp.Data.MessageId == nil {
+		return "", errors.New("feishu response carried no message_id")
+	}
+	return *resp.Data.MessageId, nil
 }

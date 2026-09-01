@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/marcelritzschke/wirelark/internal/flock"
+	"github.com/marcelritzschke/wirelark/internal/paths"
 )
 
 // Entry is the progress-card bookkeeping for one session.
@@ -23,13 +26,13 @@ type Store struct {
 	dir string
 }
 
-// Open returns the store rooted at <user cache dir>/wirelark.
+// Open returns the store rooted at Wirelark's private directory.
 func Open() (*Store, error) {
-	dir, err := os.UserCacheDir()
+	dir, err := paths.Dir()
 	if err != nil {
 		return nil, err
 	}
-	return &Store{dir: filepath.Join(dir, "wirelark")}, nil
+	return &Store{dir: dir}, nil
 }
 
 // Mutate runs fn with the current entries while holding the store's
@@ -48,10 +51,10 @@ func (s *Store) Mutate(fn func(entries map[string]Entry)) error {
 		return err
 	}
 	defer lock.Close()
-	if err := lockFile(lock); err != nil {
+	if err := flock.Lock(lock); err != nil {
 		return err
 	}
-	defer unlockFile(lock)
+	defer flock.Unlock(lock)
 
 	entries := s.load()
 	fn(entries)

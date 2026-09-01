@@ -24,6 +24,29 @@ const (
 	Compact
 )
 
+// Options are the things a card needs to know that the hook payload cannot
+// say: how much detail the user asked for, and whether this session can be
+// continued from Feishu. Only the daemon knows the latter, so a card built
+// by a hook falling back on its own simply offers no button.
+type Options struct {
+	Detail Detail
+	// ContinueSession, when set, renders a [ Continue ] button that points
+	// the user's next messages at that session.
+	ContinueSession string
+}
+
+// buttons returns the actions these options add to a notification card.
+func (o Options) buttons() []Button {
+	if o.ContinueSession == "" {
+		return nil
+	}
+	return []Button{{
+		Label:  "Continue this session",
+		Style:  stylePrimary,
+		Action: Action{Kind: ActionSelect, Session: o.ContinueSession},
+	}}
+}
+
 // Card schema (v1) - only the subset Wirelark needs, marshalled by hand so
 // the JSON stays compact and predictable.
 
@@ -65,6 +88,18 @@ type noteElement struct {
 	Elements []noteText `json:"elements"`
 }
 
+type buttonElement struct {
+	Tag   string    `json:"tag"`
+	Text  *cardText `json:"text"`
+	Type  string    `json:"type"`
+	Value Action    `json:"value"`
+}
+
+type actionElement struct {
+	Tag     string          `json:"tag"`
+	Actions []buttonElement `json:"actions"`
+}
+
 type messageCard struct {
 	Config   *cardConfig `json:"config"`
 	Header   *cardHeader `json:"header"`
@@ -72,9 +107,9 @@ type messageCard struct {
 }
 
 // card assembles and marshals a card. Each non-empty body becomes a div
-// section, separated by rules; footer, when set, renders as a quiet note
-// line.
-func card(template, title, subtitle string, bodies []string, footer string) (string, error) {
+// section, separated by rules; buttons, when present, render as one row of
+// actions; footer, when set, renders as a quiet note line.
+func card(template, title, subtitle string, bodies []string, buttons []Button, footer string) (string, error) {
 	c := &messageCard{
 		Config: &cardConfig{WideScreenMode: true, EnableForward: false},
 		Header: &cardHeader{Template: template, Title: plainText(title)},
@@ -90,6 +125,22 @@ func card(template, title, subtitle string, bodies []string, footer string) (str
 			c.Elements = append(c.Elements, &hrElement{Tag: "hr"})
 		}
 		c.Elements = append(c.Elements, &divElement{Tag: "div", Text: larkMD(b)})
+	}
+	if len(buttons) > 0 {
+		row := &actionElement{Tag: "action"}
+		for _, b := range buttons {
+			style := b.Style
+			if style == "" {
+				style = styleDefault
+			}
+			row.Actions = append(row.Actions, buttonElement{
+				Tag:   "button",
+				Text:  plainText(b.Label),
+				Type:  style,
+				Value: b.Action,
+			})
+		}
+		c.Elements = append(c.Elements, row)
 	}
 	if footer != "" {
 		c.Elements = append(c.Elements, &noteElement{

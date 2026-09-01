@@ -1,4 +1,4 @@
-package main
+package deliver
 
 import (
 	"testing"
@@ -22,33 +22,33 @@ func TestWithholdChatter(t *testing.T) {
 		{
 			name: "short turn that did work is reported",
 			turn: &transcript.Turn{Start: time.Now().Add(-8 * time.Second), LatestTool: tool},
-			want: alwaysNotify,
+			want: AlwaysNotify,
 		},
 		{
 			name: "long turn that did work is reported",
 			turn: &transcript.Turn{Start: time.Now().Add(-10 * time.Minute), LatestTool: tool},
-			want: alwaysNotify,
+			want: AlwaysNotify,
 		},
 		{
 			name: "brief conversational answer is withheld",
 			turn: &transcript.Turn{Start: time.Now().Add(-8 * time.Second)},
-			want: liveCardOnly,
+			want: LiveCardOnly,
 		},
 		{
 			name: "long wordless answer is reported anyway",
 			turn: &transcript.Turn{Start: time.Now().Add(-walkAwayTime - time.Second)},
-			want: alwaysNotify,
+			want: AlwaysNotify,
 		},
 		{
 			name: "unreadable turn is reported anyway",
 			turn: &transcript.Turn{},
-			want: alwaysNotify,
+			want: AlwaysNotify,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := withholdChatter(tc.turn); got != tc.want {
-				t.Errorf("withholdChatter = %v, want %v", got, tc.want)
+			if got := WithholdChatter(tc.turn); got != tc.want {
+				t.Errorf("WithholdChatter = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -63,7 +63,7 @@ func TestWithholdChatterReportsShortRealWork(t *testing.T) {
 		Tests:      []transcript.TestRun{{Command: "go test ./...", Passed: true}},
 		LatestTool: &transcript.ToolCall{Name: "Bash", Input: map[string]any{"command": "go test ./..."}},
 	}
-	if withholdChatter(turn) != alwaysNotify {
+	if WithholdChatter(turn) != AlwaysNotify {
 		t.Error("a 20-second turn that changed files and ran tests must be reported")
 	}
 }
@@ -78,8 +78,8 @@ func TestDetailOf(t *testing.T) {
 		{"", notify.Normal}, // anything unrecognised falls back to the default
 	}
 	for _, tc := range cases {
-		if got := detailOf(&config.Config{Detail: tc.level}); got != tc.want {
-			t.Errorf("detailOf(%q) = %v, want %v", tc.level, got, tc.want)
+		if got := DetailOf(&config.Config{Detail: tc.level}); got != tc.want {
+			t.Errorf("DetailOf(%q) = %v, want %v", tc.level, got, tc.want)
 		}
 	}
 }

@@ -1,6 +1,6 @@
-# Wirelark Product Experience Spec
+**# Wirelark Product Experience Spec**
 
-## Product idea
+**## Product idea**
 
 Wirelark connects a local coding-agent session to Feishu.
 
@@ -8,20 +8,21 @@ Its purpose is not to reproduce the terminal or coding-agent UI inside chat.
 
 Its purpose is to answer two questions:
 
-1. **Does my coding agent need me?**
-2. **What happened while I was away?**
+1\. **\*\*Does my coding agent need me?\*\***
+
+2\. **\*\*What happened while I was away?\*\***
 
 Wirelark should feel quiet when nothing matters and immediate when something does.
 
 The core product principle is:
 
-> **Notify on attention. Summarize on completion. Avoid narrating routine work.**
+\> **\*\*Notify on attention. Summarize on completion. Avoid narrating routine work.\*\***
 
----
+**---**
 
-# V1 - Attention Mode
+**# V1 — Attention Mode**
 
-## Goal
+**## Goal**
 
 V1 makes it safe to leave Claude Code running without repeatedly checking the terminal.
 
@@ -29,99 +30,117 @@ The user starts work locally as usual.
 
 Wirelark sends a Feishu DM only when:
 
-- Claude needs attention
-- Claude has finished meaningful work
-- Claude encountered a meaningful failure
-- Claude has been running long enough that a progress notification is useful
+\- Claude needs attention
+
+\- Claude has finished meaningful work
+
+\- Claude encountered a meaningful failure
+
+\- Claude has been running long enough that a progress notification is useful
 
 Routine tool calls, file reads, searches, and intermediate reasoning are not sent.
 
 The user should be able to understand every Wirelark notification in a few seconds from their phone.
 
----
+**---**
 
-# V1 experience principles
+**# V1 experience principles**
 
-## 1. Quiet by default
+**## 1. Quiet by default**
 
 Wirelark should not send messages such as:
 
-> Claude read `foo.go`
+\> Claude read \`foo.go\`
 
-> Claude ran `git status`
+\> Claude ran \`git status\`
 
-> Claude searched for `RefreshToken`
+\> Claude searched for \`RefreshToken\`
 
 These events may matter internally, but they do not normally require the user's attention.
 
 A successful Wirelark session may generate only one Feishu message: the completion notification.
 
----
+**---**
 
-## 2. Every notification answers "why am I seeing this?"
+**## 2. Every notification answers "why am I seeing this?"**
 
 The first line should immediately communicate the reason for the notification.
 
 Good:
 
-> **Claude needs your attention**
+\> **\*\*Claude needs your attention\*\***
 
-> **Claude finished**
+\> **\*\*Claude finished\*\***
 
-> **Claude hit a problem**
+\> **\*\*Claude hit a problem\*\***
 
 Bad:
 
-> **Wirelark notification**
+\> **\*\*Wirelark notification\*\***
 
-> **Claude Code event**
+\> **\*\*Claude Code event\*\***
 
-> **Hook received**
+\> **\*\*Hook received\*\***
 
----
+**---**
 
-## 3. Show project context prominently
+**## 3. Show project context prominently**
 
 Every notification should identify the project/session without forcing the user to infer it.
 
 Use a small context line such as:
 
-`payments-api · ~/work/payments-api`
+\`payments-api · \~/work/payments-api\`
 
 If a session name is available, it can be used instead:
 
-`Fix token refresh · payments-api`
+\`Fix token refresh · payments-api\`
 
 Do not show irrelevant technical identifiers.
 
----
+**---**
 
-# V1 notification types
+**# V1 notification types**
 
-## A. Attention required
+**## A. Attention required**
 
 This is the highest-priority Wirelark notification.
 
 Use it whenever Claude cannot usefully continue without user input.
 
-### Example: permission needed
+**### Example: permission needed**
 
-```text
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ ⚠️ Claude needs your attention      │
-│                                     │
-│ payments-api                        │
-│                                     │
+
+│ ⚠️ Claude needs your attention      │
+
+│                                     │
+
+│ payments-api                        │
+
+│                                     │
+
 │ Claude is waiting for permission to │
-│ continue.                            │
-│                                     │
-│ Requested action                    │
-│ Run:                                │
-│ rm -rf node_modules && npm install  │
-│                                     │
-│ Open Claude Code to respond.        │
+
+│ continue.                            │
+
+│                                     │
+
+│ Requested action                    │
+
+│ Run:                                │
+
+│ rm -rf node\_modules && npm install  │
+
+│                                     │
+
+│ Open Claude Code to respond.        │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 The message should explain the requested action in human-readable form.
 
@@ -129,133 +148,201 @@ Do not dump the complete underlying event payload.
 
 If the requested command is very long, show only the relevant portion and clearly indicate truncation.
 
----
+**---**
 
-### Example: Claude asks a question
+**### Example: Claude asks a question**
 
-```text
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ ❓ Claude has a question            │
-│                                     │
-│ payments-api                        │
-│                                     │
-│ Which API behavior should I keep?   │
-│                                     │
-│ A. Return 401 when the refresh      │
-│    token is expired                 │
-│                                     │
-│ B. Attempt a silent refresh first   │
-│                                     │
-│ Open Claude Code to answer.         │
+
+│ ❓ Claude has a question            │
+
+│                                     │
+
+│ payments-api                        │
+
+│                                     │
+
+│ Which API behavior should I keep?   │
+
+│                                     │
+
+│ A. Return 401 when the refresh      │
+
+│    token is expired                 │
+
+│                                     │
+
+│ B. Attempt a silent refresh first   │
+
+│                                     │
+
+│ Open Claude Code to answer.         │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 The question itself is the most important content.
 
 Do not surround it with agent reasoning.
 
----
+**---**
 
-## B. Completion
+**## B. Completion**
 
 This will probably be the most common Wirelark message.
 
 It should tell the user:
 
-- what Claude accomplished
-- whether the task appears successful
-- any important validation result
-- enough of Claude's final answer to understand the outcome
+\- what Claude accomplished
 
-### Example: successful coding task
+\- whether the task appears successful
 
-```text
+\- any important validation result
+
+\- enough of Claude's final answer to understand the outcome
+
+**### Example: successful coding task**
+
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ ✅ Claude finished                  │
-│                                     │
-│ payments-api · 4m 18s               │
-│                                     │
-│ Added refresh-token rotation and    │
-│ updated the session middleware.     │
-│                                     │
-│ Validation                          │
-│ ✓ 28 tests passed                   │
-│ ✓ go test ./... passed              │
-│                                     │
-│ Claude                              │
-│ "The refresh flow now rotates the   │
-│ token after every successful        │
+
+│ ✅ Claude finished                  │
+
+│                                     │
+
+│ payments-api · 4m 18s               │
+
+│                                     │
+
+│ Added refresh-token rotation and    │
+
+│ updated the session middleware.     │
+
+│                                     │
+
+│ Validation                          │
+
+│ ✓ 28 tests passed                   │
+
+│ ✓ go test ./... passed              │
+
+│                                     │
+
+│ Claude                              │
+
+│ "The refresh flow now rotates the   │
+
+│ token after every successful        │
+
 │ refresh and rejects reused tokens." │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 The first summary should ideally fit in roughly 2-4 lines.
 
 The final Claude response may be longer, but Wirelark should prefer a concise excerpt rather than rendering a huge response by default.
 
----
+**---**
 
-### Example: informational task
+**### Example: informational task**
 
-```text
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ ✅ Claude finished                  │
-│                                     │
-│ wirelark · 1m 42s                   │
-│                                     │
-│ Investigated how Feishu streaming   │
-│ cards are handled in the existing   │
-│ bridge project.                     │
-│                                     │
-│ Key finding                         │
-│ The project uses one updating card  │
-│ instead of sending every tool call  │
-│ as a separate message.              │
+
+│ ✅ Claude finished                  │
+
+│                                     │
+
+│ wirelark · 1m 42s                   │
+
+│                                     │
+
+│ Investigated how Feishu streaming   │
+
+│ cards are handled in the existing   │
+
+│ bridge project.                     │
+
+│                                     │
+
+│ Key finding                         │
+
+│ The project uses one updating card  │
+
+│ instead of sending every tool call  │
+
+│ as a separate message.              │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 Completion does not always mean "code changed."
 
 The wording should reflect what Claude actually did.
 
----
+**---**
 
-## C. Failure
+**## C. Failure**
 
 A failure notification should distinguish between:
 
-- Claude encountered a problem
-- the task itself failed
-- the session stopped unexpectedly
+\- Claude encountered a problem
+
+\- the task itself failed
+
+\- the session stopped unexpectedly
 
 Do not present every failing shell command as a Wirelark failure; coding agents routinely encounter failed commands while solving problems.
 
 Only notify when the overall agent turn ended unsuccessfully or requires intervention.
 
-### Example
+**### Example**
 
-```text
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ ❌ Claude couldn't finish           │
-│                                     │
-│ payments-api · 2m 51s               │
-│                                     │
-│ The task stopped after the test     │
-│ environment failed to start.        │
-│                                     │
-│ Last relevant error                 │
-│ PostgreSQL connection refused on    │
-│ localhost:5432                      │
-│                                     │
-│ Open Claude Code to continue.       │
+
+│ ❌ Claude couldn't finish           │
+
+│                                     │
+
+│ payments-api · 2m 51s               │
+
+│                                     │
+
+│ The task stopped after the test     │
+
+│ environment failed to start.        │
+
+│                                     │
+
+│ Last relevant error                 │
+
+│ PostgreSQL connection refused on    │
+
+│ localhost:5432                      │
+
+│                                     │
+
+│ Open Claude Code to continue.       │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 Avoid stack traces unless the error itself is short and useful.
 
----
+**---**
 
-## D. Long-running task
+**## D. Long-running task**
 
 This notification should be conservative.
 
@@ -263,31 +350,45 @@ The purpose is to reassure someone who walked away that Claude is still doing us
 
 It should not fire after every few minutes indefinitely.
 
-### Example
+**### Example**
 
-```text
+\`\`\`text
+
 ┌─────────────────────────────────────┐
-│ 🟡 Claude is still working          │
-│                                     │
-│ payments-api · 12m                  │
-│                                     │
-│ Current activity                    │
+
+│ 🟡 Claude is still working          │
+
+│                                     │
+
+│ payments-api · 12m                  │
+
+│                                     │
+
+│ Current activity                    │
+
 │ Running the integration test suite. │
-│                                     │
-│ So far                              │
-│ • Updated 4 files                   │
-│ • Unit tests passed                 │
-│ • Integration tests still running   │
+
+│                                     │
+
+│ So far                              │
+
+│ • Updated 4 files                   │
+
+│ • Unit tests passed                 │
+
+│ • Integration tests still running   │
+
 └─────────────────────────────────────┘
-```
+
+\`\`\`
 
 This should only be sent when the task has taken significantly longer than normal.
 
 The information should describe meaningful progress, not individual internal actions.
 
----
+**---**
 
-# V1 message lifecycle
+**# V1 message lifecycle**
 
 Wirelark should avoid creating chat clutter.
 
@@ -295,46 +396,61 @@ Whenever possible, one Claude turn should correspond to one logical Feishu notif
 
 For example:
 
-```text
-12:01  🟡 Claude is still working
-       Running integration tests…
+\`\`\`text
 
-12:06  message becomes:
+12:01  🟡 Claude is still working
 
-       ✅ Claude finished
-       Integration tests passed.
-       Added token rotation and 6 tests.
-```
+       Running integration tests…
+
+12:06  message becomes:
+
+       ✅ Claude finished
+
+       Integration tests passed.
+
+       Added token rotation and 6 tests.
+
+\`\`\`
 
 Updating an existing status message is preferable to sending several independent updates.
 
 If updating is not appropriate, the final completion notification should still stand on its own without requiring the user to read previous messages.
 
----
+**---**
 
-# V1 noise policy
+**# V1 noise policy**
 
 By default, do NOT notify for:
 
-- file reads
-- file writes
-- searches
-- grep operations
-- shell commands
-- successful tests during execution
-- intermediate assistant text
-- reasoning/thinking
-- sub-agent activity
-- todo updates
-- individual tool failures that Claude recovered from
+\- file reads
+
+\- file writes
+
+\- searches
+
+\- grep operations
+
+\- shell commands
+
+\- successful tests during execution
+
+\- intermediate assistant text
+
+\- reasoning/thinking
+
+\- sub-agent activity
+
+\- todo updates
+
+\- individual tool failures that Claude recovered from
 
 Those can become part of a future richer mode.
 
 V1 is about attention, not observability.
 
----
+**---**
 
-# V1 user-facing configuration
+**# V1 user-facing configuration**
 
 Keep the conceptual settings simple.
 
@@ -342,279 +458,427 @@ The user should think in terms of behavior, not hook events.
 
 Suggested settings:
 
-### Notification level
+**### Notification level**
 
-**Important only**
+**\*\*Important only\*\***
 
-- questions
-- permission requests
-- failures
-- completion
+\- questions
 
-**Important + progress**
+\- permission requests
+
+\- failures
+
+\- completion
+
+**\*\*Important + progress\*\***
 
 Same as above, plus long-running task notifications.
 
-The default should be **Important only**.
+The default should be **\*\*Important only\*\***.
 
----
+**---**
 
-### Completion detail
+**### Completion detail**
 
-**Compact**
+**\*\*Compact\*\***
 
-```text
+\`\`\`text
+
 ✅ Claude finished
 
 payments-api · 4m
 
 Implemented refresh-token rotation.
+
 28 tests passed.
-```
 
-**Normal**
+\`\`\`
 
-```text
+**\*\*Normal\*\***
+
+\`\`\`text
+
 ✅ Claude finished
 
 payments-api · 4m
 
 Implemented refresh-token rotation and
+
 updated session validation.
 
 ✓ 28 tests passed
+
 ✓ go test ./... passed
 
 Claude:
+
 "The implementation is complete..."
-```
+
+\`\`\`
 
 Normal should be the default.
 
----
+**---**
 
-# V1 success criterion
+**# V1 success criterion**
 
 A user should be comfortable doing this:
 
-```text
-1. Start Claude Code
-2. Give Claude a task
-3. Put laptop aside
-4. Look at phone later
-5. Immediately know:
-   - whether Claude finished
-   - whether Claude needs help
-   - what happened
-```
+\`\`\`text
+
+1\. Start Claude Code
+
+2\. Give Claude a task
+
+3\. Put laptop aside
+
+4\. Look at phone later
+
+5\. Immediately know:
+
+   - whether Claude finished
+
+   - whether Claude needs help
+
+   - what happened
+
+\`\`\`
 
 If Wirelark makes the user feel they need to monitor Feishu continuously, V1 has failed.
 
----
+**---**
 
-# V2 - Remote Companion
+**# Post-V1 product direction**
 
-## Goal
+V1 remains unchanged.
 
-V2 lets the user follow and interact with an active coding-agent session from Feishu without turning Feishu into a terminal emulator.
+V1 answers:
 
-V2 introduces two new concepts:
+\> **\*\*Does my coding agent need me, and what happened while I was away?\*\***
 
-1. **Watch**
-2. **Respond**
+The next product problem is:
 
-The user can see what Claude is broadly doing and handle important interactions remotely.
+\> **\*\*Can I continue the exact local Claude session I already started, while I am away from my computer?\*\***
 
----
+The recommended roadmap is:
 
-# V2 principle
+\`\`\`text
+V1 — Attention Mode
+     Tell me when Claude needs me or finishes.
 
-V1 says:
+V2 — Remote Continuation
+     Let me select and continue an existing local session from Feishu.
 
-> Tell me when something matters.
+V3 — Live Companion
+     Let me optionally watch a concise live view of that session.
+\`\`\`
 
-V2 says:
+V2 is the main product step.
 
-> Let me briefly check in and intervene when necessary.
+V3 adds convenience and visibility, but should not change the basic Wirelark mental model.
 
-It still does NOT say:
+**---**
 
-> Reproduce every line of Claude Code in Feishu.
+**# Product architecture boundary**
 
----
+The product should keep one simple architecture.
 
-# V2: live session card
+\`\`\`text
+                         Feishu
+                           │
+                           ▼
+                    Wirelark daemon
+                         (Go)
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+              ▼            ▼            ▼
+          Channel       Channel       Channel
+              │            │            │
+          Claude A      Claude B      Claude C
+\`\`\`
 
-When the user chooses to watch a session, Wirelark maintains one live card.
+The Wirelark daemon is persistent and owns the Feishu connection.
 
-Example:
+Claude Code sessions remain normal user-owned sessions.
 
-```text
-┌─────────────────────────────────────┐
-│ 🟢 Claude is working                │
-│                                     │
-│ Fix token refresh                   │
-│ payments-api · 6m 12s               │
-│                                     │
-│ I found that refresh tokens are     │
-│ validated in two separate places.   │
-│ I'm consolidating that logic now.   │
-│                                     │
-│ Recent activity                     │
-│ ✓ Read auth/session.go              │
-│ ✓ Search RefreshToken               │
-│ ✓ Edit auth/session.go              │
-│ ◌ Running go test ./...             │
-│                                     │
-│ Updated just now                    │
-└─────────────────────────────────────┘
-```
+Each running session may have a Claude Channel attached to it.
 
-Important distinction:
+The Channel talks only to the local Wirelark daemon.
 
-The activity list is a **summary of recent work**, not a complete event log.
+It should not independently connect to Feishu.
 
-Keep only a small number of recent meaningful actions visible.
+The exact local IPC mechanism and protocol are implementation choices.
 
-For example, 3-5 items.
+The product only requires that the relationship is local, private, reliable, and supports multiple simultaneous sessions.
 
----
+The existing V1 hooks continue to provide automatic discovery, lifecycle, attention, and completion information to Wirelark.
 
-# V2 tool activity
+Channels provide the supported path for sending interactive input into an already-running Claude session.
 
-Tool calls should be condensed.
+The architecture must preserve this rule:
 
-Good:
+\> **\*\*Wirelark connects to sessions. It does not own them.\*\***
 
-```text
-✓ Read auth/session.go
-✓ Edited refresh-token validation
-◌ Running integration tests
-```
+**---**
 
-Avoid:
+**# V2 — Remote Continuation**
 
-```text
-Read({"file_path":"/Users/foo/work/api/src/auth/session.go","offset":0,...})
+**## Goal**
 
-Bash({"command":"go test ./...","timeout":120000,...})
-```
+V2 lets the user continue an existing local Claude Code session from Feishu.
 
-The user should understand the activity without understanding Wirelark's internal event representation.
+The user still starts Claude Code normally on the computer.
 
----
+Wirelark should not create a new Claude session on their behalf.
 
-# V2 expanded activity
+Wirelark should not make Feishu the primary session.
 
-A user may optionally expand an activity item.
+The experience should feel like temporarily reaching into the session that is already running on the user's computer.
 
-Example:
+**---**
 
-```text
-▼ ✓ Ran tests
+**# V2 one-time setup**
 
-Command
-go test ./...
+V2 should not introduce another product-level setup flow.
 
-Result
-28 passed
-0 failed
-```
+The user has already completed the V1 Wirelark setup.
 
-For a failed action:
+Conceptually:
 
-```text
-▼ ⚠ Integration test failed
+\`\`\`text
+$ wirelark init
 
-Command
-go test ./integration/...
+✓ Feishu connected
+✓ Wirelark running
+✓ Claude integration installed
+\`\`\`
 
-Result
-Database connection refused.
+After that, Wirelark should stay out of the way.
 
-Claude continued investigating.
-```
+If current Claude Code limitations require a session to be started with Channels enabled before remote continuation is available, Wirelark may explain that requirement clearly.
 
-The last line matters.
+That should be treated as a current platform limitation, not as Wirelark's long-term interaction model.
 
-A failing tool invocation is not necessarily a failed task.
+Do not make a special Wirelark launcher part of the permanent product experience.
 
----
+**---**
 
-# V2: reasoning
+**# V2 normal daily use**
 
-Do not show raw chain-of-thought.
+The ideal daily workflow remains:
 
-Instead, show short progress statements that describe what Claude is doing.
+\`\`\`text
+$ cd ~/work/payments-api
+$ claude
 
-Good:
+$ cd ~/work/frontend
+$ claude
+\`\`\`
 
-```text
-Investigating where refresh tokens are validated.
+Wirelark discovers those sessions automatically.
 
-Found duplicate validation logic.
+The user does not register a project manually.
 
-Updating the session middleware and adding a regression test.
-```
+The user does not create a Wirelark workspace.
 
-Bad:
+The user does not migrate a conversation.
 
-```text
-We need inspect this carefully. Maybe the function...
-Actually perhaps auth.go. Let's reason...
-```
+The user does not start Claude from Feishu.
 
-The Feishu experience should expose **progress**, not internal reasoning.
+**---**
 
----
+**# V2 session overview**
 
-# V2: remote questions
-
-This is where V2 becomes materially more useful than V1.
-
-If Claude needs a choice, the user can answer inside Feishu.
+Feishu should provide a lightweight overview of the user's current local sessions.
 
 Example:
 
-```text
-┌─────────────────────────────────────┐
-│ ❓ Claude needs a decision          │
-│                                     │
-│ I found two reasonable ways to fix  │
-│ the refresh behavior.               │
-│                                     │
-│ Which should I use?                 │
-│                                     │
-│ [ Keep existing API behavior ]      │
-│                                     │
-│ [ Use stricter token rotation ]     │
-│                                     │
-│ [ I'll answer manually ]            │
-└─────────────────────────────────────┘
-```
+\`\`\`text
+Wirelark
+
+🟢 payments-api
+   Fix token refresh
+   Working · Remote ready
+
+⚠️ frontend
+   Upgrade React
+   Waiting for permission · Remote ready
+
+⚪ wirelark
+   Idle
+   Notifications only
+\`\`\`
+
+The overview should answer:
+
+\- which local sessions exist
+
+\- what each one is broadly doing
+
+\- whether one needs attention
+
+\- whether remote continuation is available
+
+Do not show implementation identifiers such as PIDs, raw session IDs, socket names, or plugin names.
+
+If a session is visible to Wirelark but cannot currently receive remote input, show that honestly.
+
+Use user-facing language such as:
+
+\`\`\`text
+Notifications only
+\`\`\`
+
+rather than presenting it as a broken session.
+
+**---**
+
+**# V2 selecting a session**
+
+When more than one session exists, the user explicitly selects which one they want to continue.
+
+Example:
+
+\`\`\`text
+Which session do you want to continue?
+
+[ payments-api · Fix token refresh ]
+
+[ frontend · Upgrade React ]
+
+[ wirelark · Idle ]
+\`\`\`
 
 After selection:
 
-```text
-You chose:
-Use stricter token rotation
+\`\`\`text
+payments-api
 
-Claude resumed working.
-```
+Fix token refresh
+~/work/payments-api
 
-The live session card then continues updating.
+🟢 Remote ready
 
----
+Send a message here to continue
+this Claude session.
+\`\`\`
 
-# V2: remote permission
+The important UX rule is:
 
-Permissions should be rendered as explicit decisions, separate from general session activity.
+\> **\*\*The user should always know which local session they are talking to.\*\***
+
+Wirelark must never silently redirect a message to another active session.
+
+**---**
+
+**# V2 sending a message**
+
+The user sends normal language.
+
+No Wirelark command syntax should be required for ordinary continuation.
 
 Example:
 
-```text
+\`\`\`text
+You:
+
+Before changing the API, check whether
+the mobile client depends on the current
+401 behavior.
+\`\`\`
+
+Wirelark sends that message to the selected existing Claude session through its Channel.
+
+The local terminal remains usable.
+
+When the user returns to the computer, the same conversation is there.
+
+There is no session migration and no duplicate Claude instance.
+
+**---**
+
+**# V2 when Claude is already working**
+
+Remote input should not make local use feel unpredictable.
+
+If Claude is already in the middle of work, Wirelark may hold the remote message until it can be delivered naturally.
+
+Example:
+
+\`\`\`text
+Queued for payments-api
+
+Claude is finishing the current turn.
+Your message will follow.
+\`\`\`
+
+The user does not need to understand how the queue works.
+
+They only need confidence that:
+
+\- the message still targets the selected session
+
+\- it will not interrupt local work unexpectedly
+
+\- it will not be delivered twice
+
+**---**
+
+**# V2 questions**
+
+When Claude needs a decision, the user should be able to answer from Feishu when the current Claude integration supports doing so safely.
+
+Example:
+
+\`\`\`text
+❓ Claude needs a decision
+
+payments-api
+
+Which behavior should I keep?
+
+[ Keep existing API behavior ]
+
+[ Use stricter token rotation ]
+
+[ Answer manually ]
+\`\`\`
+
+After the answer:
+
+\`\`\`text
+You chose:
+
+Use stricter token rotation
+
+Claude resumed working.
+\`\`\`
+
+If Wirelark cannot safely resolve a particular Claude interaction remotely, it should say so rather than pretending to support it.
+
+Example:
+
+\`\`\`text
+Claude needs your attention.
+
+This interaction must currently be
+handled in Claude Code.
+\`\`\`
+
+**---**
+
+**# V2 permissions**
+
+When Claude Channels support trusted remote permission handling for the current session, Wirelark may expose the decision in Feishu.
+
+Example:
+
+\`\`\`text
 ┌─────────────────────────────────────┐
 │ ⚠️ Permission requested             │
+│                                     │
+│ payments-api                        │
 │                                     │
 │ Claude wants to run:                │
 │                                     │
@@ -623,43 +887,294 @@ Example:
 │ In                                  │
 │ ~/work/payments-api                 │
 │                                     │
-│ [ Allow ]        [ Deny ]           │
+│ [ Allow once ]      [ Deny ]        │
 └─────────────────────────────────────┘
-```
+\`\`\`
 
-For higher-risk operations, make the action more prominent:
+Permission controls should feel deliberate.
 
-```text
+Higher-risk actions should receive stronger visual emphasis.
+
+If remote approval is not available, keep the V1 experience:
+
+\`\`\`text
+Claude needs your attention.
+
+Open Claude Code to respond.
+\`\`\`
+
+Do not introduce terminal-emulation behavior just to make every permission remotely actionable.
+
+**---**
+
+**# V2 completion**
+
+V2 should keep the V1 notification philosophy.
+
+A turn started from Feishu does not need a live transcript.
+
+When Claude finishes, Wirelark sends the same kind of concise outcome the user already understands from V1.
+
+Example:
+
+\`\`\`text
+✅ Claude finished
+
+payments-api · 2m 14s
+
+Checked the mobile client before changing
+the refresh behavior.
+
+Finding
+
+The app depends on the current 401 response,
+so Claude did not change the API yet.
+\`\`\`
+
+V2 adds the ability to continue the session.
+
+It does not change Wirelark into a chat transcript viewer.
+
+**---**
+
+**# V2 returning to the computer**
+
+This is the defining experience.
+
+After using Feishu, the user returns to the original terminal.
+
+The same Claude Code session is still there.
+
+They can immediately continue typing.
+
+Conceptually:
+
+\`\`\`text
+computer → Feishu → computer → Feishu
+\`\`\`
+
+The conversation does not change ownership when the user changes device.
+
+**---**
+
+**# V2 interaction boundaries**
+
+V2 is not a remote IDE.
+
+Do not optimize V2 for:
+
+\- terminal emulation
+
+\- browsing arbitrary files
+
+\- full diffs
+
+\- complete logs
+
+\- every tool call
+
+\- process management
+
+\- recreating Claude Code controls
+
+\- starting bridge-owned Claude sessions
+
+\- making Feishu the canonical conversation
+
+When detailed inspection is needed, the correct destination remains Claude Code on the computer.
+
+V2 is for **\*\*continuing the existing session while away.\*\***
+
+**---**
+
+**# V2 success criterion**
+
+V2 succeeds when this feels natural:
+
+\`\`\`text
+1. Start Claude Code locally as usual.
+
+2. Walk away.
+
+3. Open Wirelark in Feishu.
+
+4. See the local sessions that are running.
+
+5. Select one.
+
+6. Send a follow-up instruction.
+
+7. Receive the result or handle an important decision.
+
+8. Return to the computer.
+
+9. Continue the same Claude session.
+\`\`\`
+
+The user should never feel that Wirelark created another copy of their work.
+
+**---**
+
+**# V3 — Live Companion**
+
+**## Goal**
+
+V3 lets the user briefly check what an active local session is doing.
+
+It adds visibility to V2.
+
+It does not introduce another session model or another setup flow.
+
+The new user action is:
+
+\> **\*\*Watch\*\***
+
+Watching should be optional.
+
+Most sessions should still be quiet unless the user chooses to look.
+
+**---**
+
+**# V3 user experience**
+
+From the session overview, the user can open a session and choose to watch it.
+
+Example:
+
+\`\`\`text
+payments-api
+
+Fix token refresh
+Working · 6m
+
+[ Continue ]
+
+[ Watch ]
+\`\`\`
+
+Choosing **Watch** opens or updates one live card.
+
+**---**
+
+**# V3 live card**
+
+Example:
+
+\`\`\`text
 ┌─────────────────────────────────────┐
-│ ⚠️ Review this action               │
+│ 🟢 Claude is working                │
 │                                     │
-│ Claude wants to delete:             │
+│ Fix token refresh                   │
+│ payments-api · 6m 12s               │
 │                                     │
-│ ./tmp/generated/*                   │
+│ Current progress                    │
+│ Consolidating duplicate refresh     │
+│ validation and checking callers.    │
 │                                     │
-│ [ Allow once ]                      │
-│ [ Deny ]                            │
+│ Recent activity                     │
+│ ✓ Read auth/session.go              │
+│ ✓ Updated refresh validation        │
+│ ◌ Running go test ./...             │
+│                                     │
+│ Updated just now                    │
 └─────────────────────────────────────┘
-```
+\`\`\`
 
-Do not make approval buttons casual or easy to confuse with informational buttons.
+The card should answer:
 
----
+\> **\*\*What is Claude broadly doing right now?\*\***
 
-# V2: completion after watching
+It should not answer:
 
-When the task finishes, the same live card should become a completed card.
+\> **\*\*What events has Claude Code emitted?\*\***
 
-Before:
+**---**
 
-```text
-🟢 Claude is working
-◌ Running go test ./...
-```
+**# V3 live updates**
 
-After:
+The same card updates in place.
 
-```text
+Wirelark should not send a new Feishu message for every action.
+
+Recent activity should remain short.
+
+Three to five meaningful items is enough.
+
+Examples:
+
+\`\`\`text
+✓ Read auth/session.go
+✓ Updated refresh validation
+◌ Running integration tests
+\`\`\`
+
+Avoid raw tool payloads or protocol data.
+
+The user should not need to know how Claude Code represents an action internally.
+
+**---**
+
+**# V3 progress**
+
+V3 may show a short human-readable description of the current work.
+
+Good:
+
+\`\`\`text
+Found duplicate refresh validation.
+
+Consolidating the logic and checking
+whether the mobile client depends on it.
+\`\`\`
+
+Do not show raw chain-of-thought or internal reasoning.
+
+V3 exposes progress, not reasoning.
+
+**---**
+
+**# V3 deeper activity**
+
+A meaningful activity item may offer additional detail when that is useful.
+
+Example:
+
+\`\`\`text
+▼ ✓ Ran tests
+
+go test ./...
+
+28 passed
+0 failed
+\`\`\`
+
+For a recovered problem:
+
+\`\`\`text
+▼ ⚠ Integration test failed
+
+Database connection refused.
+
+Claude continued investigating.
+\`\`\`
+
+The user should always be able to distinguish:
+
+\- a tool encountered a problem
+
+from:
+
+\- the overall task failed
+
+**---**
+
+**# V3 completion**
+
+When the watched task finishes, the same card settles into a completed state.
+
+Example:
+
+\`\`\`text
 ┌─────────────────────────────────────┐
 │ ✅ Claude finished                  │
 │                                     │
@@ -669,152 +1184,132 @@ After:
 │ Implemented token rotation and      │
 │ consolidated refresh validation.    │
 │                                     │
-│ Changed                             │
-│ • auth/session.go                   │
-│ • auth/token.go                     │
-│ • auth/session_test.go              │
-│                                     │
 │ Validation                          │
 │ ✓ 34 tests passed                   │
 │ ✓ go test ./... passed              │
 │                                     │
-│ [ View summary ]                    │
+│ [ Continue session ]                │
 └─────────────────────────────────────┘
-```
+\`\`\`
 
 The final state should feel settled.
 
-There should no longer be spinners, "working" text, or stale progress indicators.
+No stale spinner.
 
----
+No old "working" state.
 
-# V2: session list
+No need to read the entire activity history to understand the outcome.
 
-Once users have multiple Claude sessions, Wirelark needs a lightweight overview.
+**---**
 
-Example:
+**# V3 relationship to V2**
 
-```text
-Wirelark
+V3 should require no additional setup.
 
-🟢 payments-api
-   Fix token refresh
-   Working · 6m
+A V2-capable session can simply be watched.
 
-⚠️ frontend
-   Upgrade React
-   Waiting for permission
+The user may move naturally between the two behaviors:
 
-✅ wirelark
-   Improve Feishu notifications
-   Finished 18m ago
-```
+\`\`\`text
+Session list
+    ↓
+Watch progress
+    ↓
+Send a follow-up
+    ↓
+Claude continues
+    ↓
+Watch again
+    ↓
+Return to terminal
+\`\`\`
 
-This is useful in Feishu without trying to recreate a full process manager.
+The session remains the same throughout.
 
----
+**---**
 
-# V2: sending a message to Claude
+**# V3 noise policy**
 
-Once remote input is supported, keep the mental model simple:
+Watching is opt-in.
 
-The user is talking to **the existing local Claude session**.
+Without Watch enabled, Wirelark behaves like V1/V2.
 
-Example:
+Even while watching, do not show:
 
-```text
-You:
-Before changing the API, check whether
-the mobile client depends on the current
-401 behavior.
-```
+\- every file read
 
-Then the existing session card changes to:
+\- every search
 
-```text
-🟢 Claude is working
+\- every shell command
 
-Checking mobile-client usage before
-changing the API behavior.
+\- raw logs
 
-Recent activity
-✓ Search refresh endpoint
-✓ Read mobile auth client
-◌ Comparing error handling
-```
+\- raw protocol events
 
-Avoid adding chat commands or control syntax when natural language works.
+\- internal reasoning
 
----
+\- every recovered failure
 
-# V2 interaction boundaries
+\- every state transition
 
-Even in V2, Wirelark should avoid becoming a remote IDE.
+A good live card should be understandable in a few seconds.
 
-Do NOT optimize for:
+If the user feels compelled to continuously monitor it, V3 has failed.
 
-- browsing arbitrary files
-- showing full diffs inline
-- terminal emulation
-- scrolling through every tool call
-- displaying complete logs
-- showing raw agent protocol messages
-- reproducing Claude Code menus/settings
-- exposing every internal agent state
+**---**
 
-When the user needs that level of detail, the correct destination remains Claude Code on the computer.
+**# V1 vs V2 vs V3**
 
-Wirelark is for understanding and steering the session while away.
+\| Capability | V1 | V2 | V3 |
+\|---|---|---|---|
+\| Attention notifications | Yes | Yes | Yes |
+\| Completion summaries | Yes | Yes | Yes |
+\| Automatic local session discovery | Background | User-facing | User-facing |
+\| Session overview | No | Yes | Yes |
+\| Select an existing local session | No | Yes | Yes |
+\| Continue that session from Feishu | No | Yes | Yes |
+\| Remote decisions / permissions | No | When supported safely | When supported safely |
+\| Live session view | No | No | Yes |
+\| Condensed recent activity | No | No | Yes |
+\| Full Claude Code UI reproduction | No | No | No |
+\| Wirelark owns Claude sessions | No | No | No |
 
----
+**---**
 
-# V1 vs V2
+**# Recommended positioning**
 
-| Capability | V1 | V2 |
-|---|---|---|
-| Completion notifications | Yes | Yes |
-| Permission notifications | Yes | Yes |
-| Failure notifications | Yes | Yes |
-| Long-running progress | Optional | Yes |
-| Tool-call timeline | No | Condensed |
-| Live updating session card | No | Yes |
-| Progress narration | No | Yes |
-| Answer Claude questions remotely | No | Yes |
-| Approve/deny remotely | No | Yes |
-| Send follow-up instructions | No | Yes |
-| Multiple session overview | No | Yes |
-| Full Claude UI reproduction | No | No |
+**## V1**
 
----
+**\*\*Wirelark tells you when your coding agent needs you.\*\***
 
-# Recommended product positioning
+**---**
 
-## V1
+**## V2**
 
-**Wirelark tells you when your coding agent needs you.**
+**\*\*Continue the Claude session already running on your computer, from Feishu.\*\***
 
-Alternative:
+The important distinction is not merely remote control.
 
-**Walk away from Claude Code. Wirelark will ping you when it matters.**
+It is continuity with the user's own local sessions.
 
----
+**---**
 
-## V2
+**## V3**
 
-**Your coding agent, within reach.**
+**\*\*See what your local Claude session is doing when you want to check in.\*\***
 
-Or:
+V3 should feel like a quiet window into the session, not a second Claude Code interface.
 
-**Follow and steer your local coding sessions from Feishu.**
+**---**
 
----
+**# The core design rule**
 
-# The core design rule
+Before adding a post-V1 feature, ask:
 
-Before adding any Feishu message, ask:
+\> **\*\*Does this help the user understand, continue, or safely steer an existing local session while away?\*\***
 
-> If the user is away from their computer, does seeing or acting on this information help them?
+If not, it probably does not belong in Wirelark.
 
-If not, don't send it.
+The enduring product rule is:
 
-That rule should keep Wirelark useful instead of noisy.
+\> **\*\*Notify on attention. Summarize on completion. Continue the existing session. Avoid recreating the terminal.\*\***

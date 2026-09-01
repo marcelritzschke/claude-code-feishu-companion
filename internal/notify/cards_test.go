@@ -71,7 +71,7 @@ func sampleTurn() *transcript.Turn {
 }
 
 func TestCompletionCardNormal(t *testing.T) {
-	card, err := CompletionCard(stopPayload(), sampleTurn(), Normal)
+	card, err := CompletionCard(stopPayload(), sampleTurn(), Options{Detail: Normal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestCompletionCardNormal(t *testing.T) {
 }
 
 func TestCompletionCardCompact(t *testing.T) {
-	card, err := CompletionCard(stopPayload(), sampleTurn(), Compact)
+	card, err := CompletionCard(stopPayload(), sampleTurn(), Options{Detail: Compact})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestCompletionCardCompact(t *testing.T) {
 func TestCompletionCardFailedValidation(t *testing.T) {
 	turn := sampleTurn()
 	turn.Tests = []transcript.TestRun{{Command: "go test ./...", Passed: false}}
-	card, err := CompletionCard(stopPayload(), turn, Normal)
+	card, err := CompletionCard(stopPayload(), turn, Options{Detail: Normal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestCompletionCardFailedValidation(t *testing.T) {
 func TestCompletionCardWithoutFinalMessage(t *testing.T) {
 	p := stopPayload()
 	p.LastAssistantMessage = ""
-	card, err := CompletionCard(p, sampleTurn(), Normal)
+	card, err := CompletionCard(p, sampleTurn(), Options{Detail: Normal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestCompletionCardWithoutFinalMessage(t *testing.T) {
 func TestCompletionCardSkipsMarkdownHeadings(t *testing.T) {
 	p := stopPayload()
 	p.LastAssistantMessage = "## Summary\n- Fixed the token rotation.\n\nDetails follow."
-	card, err := CompletionCard(p, sampleTurn(), Normal)
+	card, err := CompletionCard(p, sampleTurn(), Options{Detail: Normal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestPermissionCard(t *testing.T) {
 		ToolName:      "Bash",
 		ToolInput:     map[string]any{"command": "rm -rf node_modules && npm install", "description": "Reinstall"},
 	}
-	card, err := PermissionCard(p, sampleTurn())
+	card, err := PermissionCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestPermissionCardTruncatesLongCommand(t *testing.T) {
 		ToolName:      "Bash",
 		ToolInput:     map[string]any{"command": strings.Repeat("x", 400)},
 	}
-	card, err := PermissionCard(p, nil)
+	card, err := PermissionCard(p, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestQuestionCard(t *testing.T) {
 			},
 		},
 	}
-	card, err := QuestionCard(p, sampleTurn())
+	card, err := QuestionCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,10 @@ func TestQuestionCard(t *testing.T) {
 	if !strings.Contains(divs[0], "B. Silent refresh") {
 		t.Errorf("options = %q", divs[0])
 	}
-	if note != "Open Claude Code to answer." {
+	// A question is a terminal dialog: no channel can answer it, so the
+	// card must say where it has to be answered rather than imply Wirelark
+	// could take the answer.
+	if note != "This interaction must currently be handled in Claude Code." {
 		t.Errorf("note = %q", note)
 	}
 }
@@ -253,7 +256,7 @@ func TestFailureCard(t *testing.T) {
 		Error:         "billing_error",
 		ErrorDetails:  "credit balance too low on account acme-123",
 	}
-	card, err := FailureCard(p, sampleTurn())
+	card, err := FailureCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +282,7 @@ func TestFailureCard(t *testing.T) {
 
 func TestFailureCardUnknownError(t *testing.T) {
 	p := &hook.Payload{HookEventName: hook.EventStopFailure, Error: "something_new"}
-	card, err := FailureCard(p, nil)
+	card, err := FailureCard(p, nil, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +293,7 @@ func TestFailureCardUnknownError(t *testing.T) {
 
 func TestProgressCard(t *testing.T) {
 	p := &hook.Payload{HookEventName: hook.EventPostToolUse, Cwd: "/home/u/payments-api"}
-	card, err := ProgressCard(p, sampleTurn())
+	card, err := ProgressCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +317,7 @@ func TestProgressCard(t *testing.T) {
 func TestProgressCardWithoutFacts(t *testing.T) {
 	p := &hook.Payload{HookEventName: hook.EventPostToolUse}
 	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute)}
-	card, err := ProgressCard(p, turn)
+	card, err := ProgressCard(p, turn, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

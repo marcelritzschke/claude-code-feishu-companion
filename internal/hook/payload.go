@@ -18,6 +18,13 @@ const (
 	EventPostToolUse       = "PostToolUse"
 	EventStop              = "Stop"
 	EventStopFailure       = "StopFailure"
+
+	// The lifecycle events carry no notification of their own. They exist
+	// so the daemon knows which sessions are running and what each one is
+	// doing, which is what the Feishu session overview is made of.
+	EventSessionStart     = "SessionStart"
+	EventSessionEnd       = "SessionEnd"
+	EventUserPromptSubmit = "UserPromptSubmit"
 )
 
 // QuestionTool is the tool Claude uses to ask the user a multiple-choice
@@ -41,6 +48,12 @@ type Payload struct {
 	// AgentID is only populated when the hook fired inside a subagent.
 	// Subagent activity is routine work and never notified.
 	AgentID string `json:"agent_id"`
+
+	// ProjectDir is the project this event belongs to, set by whoever
+	// knows it for certain. A hook process can read it from its own
+	// environment; the daemon cannot, because it handles events from every
+	// session and its environment belongs to whichever one started it.
+	ProjectDir string `json:"-"`
 
 	// Tool events (PermissionRequest, PreToolUse, PostToolUse).
 	ToolName  string         `json:"tool_name"`
@@ -70,12 +83,14 @@ func (p *Payload) Subagent() bool {
 	return p.AgentID != ""
 }
 
-// Handled reports whether the event carries a notification Wirelark sends:
-// a permission prompt, a question, a finished turn, a failed turn, or a
-// tool call (which only matters as a progress checkpoint).
+// Handled reports whether the event is one Wirelark acts on: a permission
+// prompt, a question, a finished turn, a failed turn, a tool call (which
+// matters as a progress checkpoint), or a lifecycle event that says a
+// session started, ended, or was given something to do.
 func (p *Payload) Handled() bool {
 	switch p.HookEventName {
-	case EventPermissionRequest, EventPostToolUse, EventStop, EventStopFailure:
+	case EventPermissionRequest, EventPostToolUse, EventStop, EventStopFailure,
+		EventSessionStart, EventSessionEnd, EventUserPromptSubmit:
 		return true
 	case EventPreToolUse:
 		return p.ToolName == QuestionTool
@@ -83,13 +98,21 @@ func (p *Payload) Handled() bool {
 	return false
 }
 
-// ProjectLabel returns the human-facing project name for the session:
-// the basename of CLAUDE_PROJECT_DIR (stable even when Claude cd's
+// ProjectLabel returns the human-facing project name for the session: the
+// basename of the project directory (stable even when Claude cd's
 // elsewhere), falling back to the payload cwd.
+//
+// The environment is consulted only as the hook process's own shortcut. A
+// caller that knows which session this event came from sets ProjectDir and
+// is believed, because a process handling events from several sessions has
+// no business reading any one session's environment.
 func (p *Payload) ProjectLabel() string {
 	dir := p.Cwd
 	if env := os.Getenv("CLAUDE_PROJECT_DIR"); env != "" {
 		dir = env
+	}
+	if p.ProjectDir != "" {
+		dir = p.ProjectDir
 	}
 	if dir == "" {
 		return "unknown project"

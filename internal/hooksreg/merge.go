@@ -21,8 +21,19 @@ type registration struct {
 	matcher string
 }
 
-// registrationsFor lists the hooks Wirelark needs under the current
-// settings:
+// Settings are the parts of the user's configuration that change which
+// hooks Wirelark needs.
+type Settings struct {
+	// Progress adds the checkpoints long-running progress updates are
+	// built from.
+	Progress bool
+	// Remote adds the lifecycle events the Feishu session overview is made
+	// of. They say nothing on their own, so without remote continuation
+	// they would only spawn processes with nothing to report.
+	Remote bool
+}
+
+// registrationsFor lists the hooks Wirelark needs under the given settings:
 //   - PermissionRequest: Claude is blocked on a permission decision
 //   - PreToolUse (AskUserQuestion): Claude is blocked on a question
 //   - Stop: the turn finished
@@ -30,15 +41,23 @@ type registration struct {
 //   - PostToolUse: checkpoints for long-running progress updates, and only
 //     when those are switched on - at the default level it would spawn a
 //     Wirelark process per tool call with nothing to say.
-func registrationsFor(progress bool) []registration {
+//   - SessionStart, SessionEnd, UserPromptSubmit: which sessions exist and
+//     what each is doing, for the Feishu session overview.
+func registrationsFor(s Settings) []registration {
 	regs := []registration{
 		{event: "PermissionRequest"},
 		{event: "PreToolUse", matcher: "AskUserQuestion"},
 		{event: "Stop"},
 		{event: "StopFailure"},
 	}
-	if progress {
+	if s.Progress {
 		regs = append(regs, registration{event: "PostToolUse"})
+	}
+	if s.Remote {
+		regs = append(regs,
+			registration{event: "SessionStart"},
+			registration{event: "SessionEnd"},
+			registration{event: "UserPromptSubmit"})
 	}
 	return regs
 }
@@ -50,7 +69,7 @@ func registrationsFor(progress bool) []registration {
 // hooks behind.
 var managedEvents = []string{
 	"PermissionRequest", "PreToolUse", "PostToolUse", "Stop", "StopFailure",
-	"Notification", "SessionStart", "SessionEnd",
+	"Notification", "SessionStart", "SessionEnd", "UserPromptSubmit",
 }
 
 // wirelarkCommand matches a hook command that runs a wirelark binary,
@@ -74,7 +93,7 @@ func SettingsPath() (string, error) {
 // use. It is idempotent and preserves all non-Wirelark content. Returns
 // whether anything changed. A backup of the previous file is written next
 // to it before modifying.
-func Register(settingsPath, command string, progress bool) (bool, error) {
+func Register(settingsPath, command string, opts Settings) (bool, error) {
 	raw, err := os.ReadFile(settingsPath)
 	var settings map[string]any
 	if err == nil {
@@ -93,7 +112,7 @@ func Register(settingsPath, command string, progress bool) (bool, error) {
 		settings["hooks"] = hooks
 	}
 
-	regs := registrationsFor(progress)
+	regs := registrationsFor(opts)
 	wanted := map[string]bool{}
 	for _, reg := range regs {
 		wanted[reg.event] = true

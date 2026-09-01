@@ -36,6 +36,21 @@ const (
 	DetailCompact DetailLevel = "compact"
 )
 
+// Switch is a plain on/off setting. It is spelled out rather than left a
+// bool because a missing value in a config file is indistinguishable from
+// false, and the two V2 settings default to on.
+type Switch string
+
+const (
+	// On is the default for both V2 settings.
+	On Switch = "on"
+	// Off disables the setting.
+	Off Switch = "off"
+)
+
+// Enabled reports whether the switch is on.
+func (s Switch) Enabled() bool { return s != Off }
+
 // OpenIDType names which kind of Feishu user identifier OpenID holds. The
 // SDK sends to any of them; we record the kind so the right ReceiveIdType
 // is used and the user can paste whichever id the admin console hands them.
@@ -72,6 +87,25 @@ type Config struct {
 	OpenIDKind OpenIDType  `toml:"open_id_type"`
 	Notify     NotifyLevel `toml:"notify"`
 	Detail     DetailLevel `toml:"detail"`
+
+	// Remote is whether a session may be continued from Feishu at all.
+	// With it off, Wirelark is exactly the V1 one-way notifier.
+	Remote Switch `toml:"remote"`
+	// RemotePermissions is whether tool approvals may be answered from
+	// Feishu. It is separate from Remote because it is a different kind of
+	// trust: anyone who can message the bot can approve a command with it,
+	// where continuation only lets them ask for work.
+	RemotePermissions Switch `toml:"remote_permissions"`
+}
+
+// RemoteEnabled reports whether sessions may be continued from Feishu.
+func (c *Config) RemoteEnabled() bool { return c.Remote.Enabled() }
+
+// RemotePermissionsEnabled reports whether tool approvals may be answered
+// from Feishu. It requires remote continuation: without the return path
+// there is nothing to carry a verdict back on.
+func (c *Config) RemotePermissionsEnabled() bool {
+	return c.RemoteEnabled() && c.RemotePermissions.Enabled()
 }
 
 // ProgressEnabled reports whether long-running progress updates are on.
@@ -125,6 +159,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Detail != DetailNormal && c.Detail != DetailCompact {
 		c.Detail = DetailNormal
+	}
+	if c.Remote != On && c.Remote != Off {
+		c.Remote = On
+	}
+	if c.RemotePermissions != On && c.RemotePermissions != Off {
+		c.RemotePermissions = On
 	}
 	switch c.OpenIDKind {
 	case OpenIDTypeOpenID, OpenIDTypeUserID, OpenIDTypeUnionID:

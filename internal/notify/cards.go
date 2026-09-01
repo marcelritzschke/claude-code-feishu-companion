@@ -10,17 +10,18 @@ import (
 
 // PermissionCard is the highest-priority notification: Claude cannot
 // continue without a permission decision.
-func PermissionCard(p *hook.Payload, turn *transcript.Turn) (string, error) {
+func PermissionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	bodies := []string{
 		"Claude is waiting for permission to continue.",
 		"**Requested action**\n" + describeAction(p.ToolName, p.ToolInput, p.Cwd),
 	}
-	return card("orange", "⚠️ Claude needs your attention", contextLine(p, turn), bodies, "Open Claude Code to respond.")
+	return card("orange", "⚠️ Claude needs your attention", contextLine(p, turn), bodies,
+		opts.buttons(), "Open Claude Code to respond.")
 }
 
 // QuestionCard fires when Claude asks a multiple-choice question; the
 // question itself is the most important content.
-func QuestionCard(p *hook.Payload, turn *transcript.Turn) (string, error) {
+func QuestionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	var bodies []string
 	for _, q := range parseQuestions(p.ToolInput) {
 		var b strings.Builder
@@ -37,25 +38,30 @@ func QuestionCard(p *hook.Payload, turn *transcript.Turn) (string, error) {
 	if len(bodies) == 0 {
 		bodies = append(bodies, "Claude is waiting for an answer.")
 	}
-	return card("blue", "❓ Claude has a question", contextLine(p, turn), bodies, "Open Claude Code to answer.")
+	// A question is a terminal dialog, not a permission prompt: Claude Code
+	// offers no way to answer one from a channel, and the session stays
+	// blocked until someone answers it where it was asked. Saying so is
+	// better than a button that would not work.
+	return card("blue", "❓ Claude has a question", contextLine(p, turn), bodies,
+		nil, "This interaction must currently be handled in Claude Code.")
 }
 
 // CompletionCard reports a finished turn: what Claude accomplished, the
 // validation results, and (at Normal detail) an excerpt of the final answer.
-func CompletionCard(p *hook.Payload, turn *transcript.Turn, detail Detail) (string, error) {
+func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	summary, rest := splitFinal(p.LastAssistantMessage)
 	if summary == "" {
 		summary = accomplishment(turn)
 	}
 
-	if detail == Compact {
+	if opts.Detail == Compact {
 		// One glance: the summary and the validation outcome as prose.
 		lines := []string{summary}
 		if v := validationSentence(turn.Tests); v != "" {
 			lines = append(lines, v)
 		}
 		return card("green", "✅ Claude finished", contextWithDuration(p, turn),
-			[]string{strings.Join(lines, "\n")}, "")
+			[]string{strings.Join(lines, "\n")}, opts.buttons(), "")
 	}
 
 	var bodies []string
@@ -66,18 +72,19 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, detail Detail) (stri
 	if rest != "" {
 		bodies = append(bodies, "**Claude**\n\""+truncateRunes(rest, quoteCap)+"\"")
 	}
-	return card("green", "✅ Claude finished", contextWithDuration(p, turn), bodies, "")
+	return card("green", "✅ Claude finished", contextWithDuration(p, turn), bodies, opts.buttons(), "")
 }
 
 // FailureCard reports a turn that needs the user instead of one that
 // finished: either the API stopped the turn, or the work itself ended in a
 // failing state.
-func FailureCard(p *hook.Payload, turn *transcript.Turn) (string, error) {
+func FailureCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	bodies := []string{failureText(p, turn)}
 	if detail := lastRelevantError(p, turn); detail != "" {
 		bodies = append(bodies, "**Last relevant error**\n"+detail)
 	}
-	return card("red", "❌ Claude couldn't finish", contextWithDuration(p, turn), bodies, "Open Claude Code to continue.")
+	return card("red", "❌ Claude couldn't finish", contextWithDuration(p, turn), bodies,
+		opts.buttons(), "Open Claude Code to continue.")
 }
 
 // failureText says why the turn needs the user, in one sentence.
@@ -111,12 +118,12 @@ func lastRelevantError(p *hook.Payload, turn *transcript.Turn) string {
 
 // ProgressCard reassures a user who walked away that long-running work is
 // still moving. It updates in place until the turn ends.
-func ProgressCard(p *hook.Payload, turn *transcript.Turn) (string, error) {
+func ProgressCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	bodies := []string{"**Current activity**\n" + describeActivity(turn.LatestTool, p.Cwd)}
 	if facts := soFar(turn); facts != "" {
 		bodies = append(bodies, "**So far**\n"+facts)
 	}
-	return card("yellow", "🟡 Claude is still working", contextWithDuration(p, turn), bodies, "")
+	return card("yellow", "🟡 Claude is still working", contextWithDuration(p, turn), bodies, opts.buttons(), "")
 }
 
 // apiFailureText turns a StopFailure error type into a sentence a phone

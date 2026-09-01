@@ -1,14 +1,18 @@
 # Wirelark
 
-**Wirelark tells you when your coding agent needs you.**
+**Wirelark tells you when your coding agent needs you, and lets you continue
+the session it is telling you about.**
 
-Wirelark connects a local Claude Code session to Feishu so you can give
-Claude a task, put the laptop aside, and know from your phone whether it
-finished, whether it needs you, and what happened.
+Wirelark connects the Claude Code sessions running on your computer to
+Feishu, so you can give Claude a task, put the laptop aside, and know from
+your phone whether it finished, whether it needs you, and what happened -
+and then pick a session and send it your next instruction, without the
+conversation ever leaving your machine.
 
 The rule behind every message it sends:
 
-> **Notify on attention. Summarize on completion. Avoid narrating routine work.**
+> **Notify on attention. Summarize on completion. Continue the existing
+> session. Avoid recreating the terminal.**
 
 No message is ever triggered by a file read, a search, a shell command, or
 intermediate reasoning. Commands do appear as content where they are the
@@ -46,6 +50,88 @@ card for it would be clutter. Work of any length is reported, however
 quickly it finished. A turn that already has a progress card standing is
 always settled, so you never see a stale "still working".
 
+## Continuing a session from Feishu
+
+Message the Wirelark bot and it shows what is running on your computer:
+
+```text
+Wirelark
+Your local Claude sessions
+
+⚠️ frontend
+Upgrade React
+Waiting for you · Remote ready
+
+🟢 payments-api
+Fix token refresh
+Working · Remote ready
+
+⚪ wirelark
+Idle · Notifications only
+
+[ Upgrade React · frontend ]  [ Fix token refresh · payments-api ]
+```
+
+Pick one and Wirelark says which session you are now talking to. Everything
+you send after that goes to that session and no other - plain language, no
+command syntax. If the session is mid-turn, Wirelark says the message is
+queued rather than pretending it landed; if the session ends, the next
+message goes nowhere and you are asked to pick again. Wirelark never
+redirects a message to a session you did not choose.
+
+Your terminal stays usable throughout. There is no second copy of the work:
+when you get back to the keyboard, the same session is there with your
+message in it.
+
+Completion, failure, and progress cards for a reachable session carry a
+`[ Continue this session ]` button, so reading the outcome and giving the
+next instruction is one gesture.
+
+Say `sessions` at any time to see the overview again.
+
+### Permissions
+
+When a session is reachable, a permission prompt reaches Feishu with the
+two answers Claude Code accepts:
+
+```text
+⚠️ Permission requested
+Fix token refresh · payments-api
+
+Claude wants to run:
+Bash
+{"command":"npm install"}
+
+In
+~/work/payments-api
+
+[ Allow once ]  [ Deny ]
+```
+
+The local dialog stays open the whole time and either answer ends it: the
+decision is still on your computer, Wirelark only adds a second place to
+make it from. Answer in the terminal instead and the Feishu card settles
+itself to "already answered" rather than standing there asking.
+
+An action that cannot easily be undone - `rm -rf`, `sudo`, a force push, a
+dropped table, `curl … | sh` - gets a red card, the full command rather than
+an excerpt, and no emphasis on Allow.
+
+Remote approval is a real grant of authority: anyone who can message your
+Wirelark bot can approve a command in your session. It is a separate setting
+from continuation for that reason, and `init` asks about it separately.
+
+### What stays in Claude Code
+
+Multiple-choice questions (`AskUserQuestion`) are a terminal dialog, not a
+permission prompt: no channel can answer one, and the session is blocked
+until someone answers it where it was asked. Wirelark says so on the card
+rather than offering a button that would not work.
+
+Wirelark is not a remote IDE. No terminal emulation, no file browsing, no
+diffs, no logs, no tool-by-tool transcript. When you need to inspect
+something, the right place is still Claude Code on your computer.
+
 ## Setup
 
 Requirements: [mise](https://mise.jdx.dev/) (or any Go >= 1.27).
@@ -53,16 +139,20 @@ Requirements: [mise](https://mise.jdx.dev/) (or any Go >= 1.27).
 ```sh
 mise install                # installs the pinned Go toolchain
 mise exec -- go build -o wirelark .
-./wirelark init   # interactive: credentials, behavior settings, test card, hook registration
+./wirelark init   # interactive: credentials, behavior settings, test card, hooks, channel
 ```
 
-`init` asks for the Feishu app_id/app_secret of a self-built app with the
-bot capability and `im:message:send_as_bot` (plus
-`contact:user.id:readonly` if you resolve your open_id by email), asks two
+`init` asks for the Feishu app_id/app_secret of a self-built app, asks four
 behavior questions, delivers a real test card before saving anything, then
-registers the hooks in `~/.claude/settings.json` (idempotent; existing
-hooks are preserved, every other Wirelark entry is removed - including one
-left by an install at a different path - and a backup is written).
+registers the hooks and the channel, starts the daemon, and checks that
+Feishu can reach back to your computer while you are still there to fix it
+if it cannot.
+
+The Feishu app needs the bot capability, `im:message:send_as_bot` (plus
+`contact:user.id:readonly` if you resolve your open_id by email), and - for
+continuation - `im:message`, event subscription in **long connection** mode
+with `im.message.receive_v1` subscribed, and card callbacks in long
+connection mode for the Allow and Deny buttons.
 
 Config lives at `~/.config/wirelark/config.toml` (0600):
 
@@ -78,41 +168,102 @@ notify = "important"            # attention, failures, completion
 # how much a completion says
 detail = "normal"               # summary, validation, and Claude's answer
 # detail = "compact"            # one-glance summary
+
+# continuing sessions from Feishu
+remote = "on"                   # off makes Wirelark a one-way notifier again
+remote_permissions = "on"       # off keeps permission cards informational
 ```
 
-The tenant access token is cached at `~/.cache/wirelark/token.json` so each
-hook invocation skips the token round trip; the progress-card bookkeeping
-lives in `~/.cache/wirelark/state.json`.
+Everything else lives in one private directory, `~/.cache/wirelark` (0700):
+the cached tenant token, the progress-card bookkeeping, the session
+snapshot, the daemon's socket, and the debug log. `WIRELARK_STATE_DIR`
+points a whole install somewhere else.
+
+### Starting sessions with the channel enabled
+
+Claude Code channels are a research preview, and a channel that is not on
+Anthropic's allowlist has to be opted into per session. Until Wirelark is on
+that list, start sessions you want to continue from Feishu with:
+
+```sh
+claude --dangerously-load-development-channels server:wirelark
+```
+
+Sessions started with a plain `claude` still send you notifications; Feishu
+shows them as **Notifications only** rather than as broken. This is a
+limitation of the preview, not how Wirelark expects to work, which is why
+there is no `wirelark claude` wrapper to hide it.
+
+## How it fits together
+
+```text
+                    Feishu
+                      │
+              wirelark daemon        one persistent process,
+                      │              the only one that talks to Feishu
+      ┌───────────────┼───────────────┐
+      │               │               │
+ wirelark channel  channel        wirelark send
+ (MCP, per session)                (per hook event)
+      │
+   Claude A        Claude B        Claude C
+```
+
+- **`wirelark send`** is the hook entrypoint, run per event by Claude Code.
+  It hands the event to the daemon and exits. If no daemon answers it
+  delivers the notification itself, so a stopped daemon costs remote
+  continuation and never a message.
+- **`wirelark channel`** is the MCP channel server Claude Code spawns with a
+  session. It holds no credentials and opens no network connection: it talks
+  only to the local daemon, over a socket only you can open.
+- **`wirelark daemon`** owns the Feishu connection, the session registry, and
+  every card. It starts itself when a hook or a channel needs it;
+  `wirelark daemon --status` and `--stop` are there for when you want to
+  look or intervene.
+
+Wirelark connects to sessions. It does not own them: it never spawns,
+resumes, or stops a Claude Code session, and the conversation does not
+change hands when you change device.
 
 ## Hook events
 
 Wirelark registers async hooks for `PermissionRequest`, `PreToolUse`
-(matcher `AskUserQuestion`), `Stop`, and `StopFailure`. `PostToolUse` is
-added only at `notify = "important+progress"`, since it fires on every tool
-call and has nothing to say otherwise; re-running `init` after switching
-back removes it. Subagent events are skipped - subagent activity is
-routine work.
+(matcher `AskUserQuestion`), `Stop`, and `StopFailure`. `SessionStart`,
+`SessionEnd`, and `UserPromptSubmit` are added when remote continuation is
+on - they carry no notification, and exist so the session overview knows
+what is running and what each session is doing. `PostToolUse` is added only
+at `notify = "important+progress"`, since it fires on every tool call and
+has nothing to say otherwise. Re-running `init` after changing a setting
+removes the hooks it no longer needs. Subagent events are skipped -
+subagent activity is routine work.
 
-It is a strictly read-only tap on Claude Code: it never spawns, resumes,
-stops, or feeds the harness. Each hook invocation reads the payload from
-stdin, sends at most one card, and exits within seconds. Every failure is
-silent - a broken bridge must be invisible to the session that spawned it.
+Registration is idempotent: existing hooks are preserved, every other
+Wirelark entry is removed - including one left by an install at a different
+path - and a backup is written.
 
 ## Debugging
 
 ```sh
 echo '<hook payload json>' | ./wirelark send --dry-run   # prints the card JSON
 <payload> | WIRELARK_DEBUG=1 ./wirelark send              # traces to the debug log
+./wirelark daemon --status
 cat ~/.cache/wirelark/debug.log
 ```
 
-`send --dry-run` works without a config file. `WIRELARK_CONFIG` points the
-binary at a different one.
+`send --dry-run` works without a config file and never reaches the daemon.
+`WIRELARK_CONFIG` points the binary at a different config file, and
+`WIRELARK_STATE_DIR` at a different private directory - together they run a
+whole second install without touching yours.
 
 ## Notes
 
 - WSL and native Windows are both supported runtimes (each environment needs
-  its own `init` and binary; cross-compile with `GOOS=windows`).
-- Remote interaction (answering questions or approving permissions from
-  Feishu) is deliberately out of scope for v1 - the notification tells you
-  to open Claude Code on your computer.
+  its own `init` and binary; cross-compile with `GOOS=windows`). On Windows
+  the daemon's socket is a loopback port guarded by a secret in a 0600 file,
+  since Windows has no unix sockets; on Windows Wirelark also cannot read a
+  session's command line, so sessions show as **Remote untested** until the
+  first message proves the link one way or the other.
+- Channels require Anthropic authentication (claude.ai or a Console API key)
+  and are unavailable on Bedrock, Vertex, and Foundry. Team and Enterprise
+  organizations must enable them centrally. Without them, everything in
+  "Notifications" still works.

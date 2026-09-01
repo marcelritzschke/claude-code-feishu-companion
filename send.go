@@ -1,20 +1,32 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/marcelritzschke/wirelark/internal/config"
+	"github.com/marcelritzschke/wirelark/internal/daemon"
+	"github.com/marcelritzschke/wirelark/internal/deliver"
 	"github.com/marcelritzschke/wirelark/internal/feishu"
 	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/notify"
+	"github.com/marcelritzschke/wirelark/internal/ipc"
 	"github.com/marcelritzschke/wirelark/internal/transcript"
 )
 
-// walkAwayTime is how long an answer has to take before the user might not
-// be sitting in front of it. It is only ever a reason to notify, never a
-// reason to stay quiet: see withholdChatter.
-const walkAwayTime = 2 * time.Minute
+// maxPayloadBytes bounds stdin so a runaway hook payload cannot OOM the
+// process. Claude Code payloads are a few KB at most.
+const maxPayloadBytes = 1 << 20
+
+// handoffTimeout bounds the whole exchange with the daemon. A hook runs
+// inside the Claude Code session, so it gives up quickly and does the work
+// itself rather than making the session wait on a daemon in trouble.
+const handoffTimeout = 3 * time.Second
+
+// daemonProbeTimeout bounds asking whether a daemon is there.
+const daemonProbeTimeout = 2 * time.Second
 
 // runSend always returns 0: it runs inside Claude Code hooks and must never
 // disturb the session, whatever happens.
@@ -26,7 +38,12 @@ func runSend(args []string) int {
 		}
 	}
 
-	p, err := hook.Decode(os.Stdin)
+	raw, err := io.ReadAll(io.LimitReader(os.Stdin, maxPayloadBytes))
+	if err != nil {
+		debugLog("read payload: %v", err)
+		return 0
+	}
+	p, err := hook.Decode(bytes.NewReader(raw))
 	if err != nil {
 		debugLog("decode payload: %v", err)
 		return 0
@@ -51,6 +68,14 @@ func runSend(args []string) int {
 		cfg = &config.Config{Notify: config.NotifyImportant, Detail: config.DetailNormal}
 	}
 
+	// The daemon is the one role that can see more than this single moment,
+	// so it gets the event whenever it can be reached. Everything below is
+	// the fallback: a stopped daemon costs remote continuation, never a
+	// notification.
+	if !dryRun && cfg.RemoteEnabled() && handOff(raw) {
+		return 0
+	}
+
 	var client *feishu.Client
 	if !dryRun {
 		client, err = feishu.New(cfg)
@@ -63,70 +88,43 @@ func runSend(args []string) int {
 	// A failure to read the transcript degrades to an empty turn
 	// (project-only context) rather than dropping the notification.
 	turn := transcript.Load(p.TranscriptPath, p.PromptID)
-	d := &deliverer{payload: p, client: client, dryRun: dryRun}
-
-	switch p.HookEventName {
-	case hook.EventPermissionRequest:
-		card, err := notify.PermissionCard(p, turn)
-		d.fresh(card, err)
-	case hook.EventPreToolUse:
-		card, err := notify.QuestionCard(p, turn)
-		d.fresh(card, err)
-	case hook.EventStop:
-		// A turn can finish without succeeding: if the work it validated
-		// was still failing at the end, that needs the user, not a ✅.
-		if turn.Failed {
-			card, err := notify.FailureCard(p, turn)
-			d.settle(card, err, alwaysNotify)
-			break
-		}
-		card, err := notify.CompletionCard(p, turn, detailOf(cfg))
-		d.settle(card, err, withholdChatter(turn))
-	case hook.EventStopFailure:
-		card, err := notify.FailureCard(p, turn)
-		d.settle(card, err, alwaysNotify)
-	case hook.EventPostToolUse:
-		if cfg.ProgressEnabled() {
-			d.progress(turn)
-		}
-	}
+	(&deliver.Deliverer{Payload: p, Sender: senderOrNil(client), DryRun: dryRun}).Event(turn, cfg)
 	return 0
 }
 
-// Whether a final card may be withheld when the turn has no live progress
-// card to settle. Named so the call sites read as intent.
-const (
-	alwaysNotify = false
-	liveCardOnly = true
-)
-
-// withholdChatter decides whether a finished turn may go unreported.
-//
-// The spec's test is whether Claude "finished meaningful work", not how
-// long it took: a task you walk away from has no minimum duration. So the
-// only turn withheld is one that did no work at all - no tool ever ran, so
-// it was a question answered in conversation, with the user typing and
-// reading. Everything else is reported however briefly it ran.
-//
-// Both escape hatches point the same way, because silence is the one
-// failure mode this product cannot afford: a turn Wirelark could not read,
-// and a wordless answer long enough to have walked away from, are both
-// reported anyway.
-func withholdChatter(turn *transcript.Turn) bool {
-	switch {
-	case turn.Start.IsZero(): // no readable turn; notifying beats guessing
-		return alwaysNotify
-	case turn.LatestTool != nil: // the turn actually did something
-		return alwaysNotify
-	case time.Since(turn.Start) >= walkAwayTime:
-		return alwaysNotify
+// handOff gives the event to the daemon and reports whether it took it. The
+// payload travels untouched, along with the two facts only a hook process
+// can see: which project directory Claude Code named, and which claude
+// process this session is.
+func handOff(raw []byte) bool {
+	if err := daemon.EnsureRunning(); err != nil {
+		debugLog("no daemon: %v", err)
+		return false
 	}
-	return liveCardOnly
+	pid, _ := strconv.Atoi(os.Getenv("CLAUDE_PID"))
+	env, err := ipc.Request(ipc.TypeHook, ipc.Hook{
+		Payload:    raw,
+		ProjectDir: os.Getenv("CLAUDE_PROJECT_DIR"),
+		PID:        pid,
+	}, handoffTimeout)
+	if err != nil {
+		debugLog("hand off to daemon: %v", err)
+		return false
+	}
+	var ack ipc.Ack
+	if err := env.Into(&ack); err != nil || !ack.OK {
+		debugLog("daemon declined the event: %v %s", err, ack.Err)
+		return false
+	}
+	return true
 }
 
-func detailOf(cfg *config.Config) notify.Detail {
-	if cfg.CompactCompletions() {
-		return notify.Compact
+// senderOrNil keeps a nil *feishu.Client from becoming a non-nil
+// deliver.Sender holding a nil pointer, which would panic on the first send
+// instead of staying quiet.
+func senderOrNil(c *feishu.Client) deliver.Sender {
+	if c == nil {
+		return nil
 	}
-	return notify.Normal
+	return c
 }

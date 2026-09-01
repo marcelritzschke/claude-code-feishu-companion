@@ -5,7 +5,20 @@
 // the separator is a property of the recorded path, not of this process.
 package pathdisp
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
+
+// homeDir is a variable so a test can render a path against a home
+// directory other than the one it happens to run under.
+var homeDir = func() string {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return h
+}
 
 // Base returns the final element of p, or p itself when p is a filesystem
 // root or has no separator.
@@ -61,3 +74,19 @@ func within(p, dir string) (string, bool) {
 // slashed rewrites "\" to "/" so a prefix comparison works whichever
 // separator the two paths were recorded with.
 func slashed(p string) string { return strings.ReplaceAll(p, `\`, "/") }
+
+// Home renders an absolute path the way a person writes it, with the home
+// directory as "~". A card that shows a full home path spends half its
+// width on the same prefix every time.
+func Home(p string) string {
+	home := homeDir()
+	if home == "" {
+		return p
+	}
+	nh := strings.TrimRight(slashed(home), "/")
+	np := slashed(p)
+	if nh == "" || np != nh && !strings.HasPrefix(np, nh+"/") {
+		return p
+	}
+	return "~" + np[len(nh):]
+}

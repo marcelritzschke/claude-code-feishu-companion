@@ -24,6 +24,10 @@ const (
 	ActionSelect = "select"
 	// ActionPermit answers a relayed permission request.
 	ActionPermit = "permit"
+	// ActionWatch opens the live view of a session.
+	ActionWatch = "watch"
+	// ActionUnwatch closes it again.
+	ActionUnwatch = "unwatch"
 )
 
 // Verdicts a permission button carries.

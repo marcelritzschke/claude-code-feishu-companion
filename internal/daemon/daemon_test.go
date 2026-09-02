@@ -125,7 +125,7 @@ func fixture(t *testing.T, remote session.Remote) (*Daemon, *recorder, *link) {
 	}, rec, nil)
 	l := &link{}
 	d.reg.Attach("sess-1", 4242, "/work/payments-api", remote, l)
-	d.reg.Observe("sess-1", 4242, "/work/payments-api", "Fix token refresh", hook.EventStop)
+	d.reg.Observe(session.Observation{ID: "sess-1", PID: 4242, Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: hook.EventStop})
 	return d, rec, l
 }
 
@@ -230,7 +230,7 @@ func TestNotificationsOnlySessionRefusesHonestly(t *testing.T) {
 // be a small lie the user would notice.
 func TestBusySessionSaysQueued(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	d.reg.Observe("sess-1", 4242, "/work/payments-api", "", hook.EventUserPromptSubmit)
+	d.reg.Observe(session.Observation{ID: "sess-1", PID: 4242, Dir: "/work/payments-api", HookEvent: hook.EventUserPromptSubmit})
 	selectSession(t, d, "sess-1")
 
 	d.onMessage(context.Background(), feishu.Message{Text: "also check the tests"})

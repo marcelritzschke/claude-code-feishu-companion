@@ -39,7 +39,7 @@ func TestStateFollowsHookEvents(t *testing.T) {
 		{"Stop", Idle},
 	}
 	for _, step := range steps {
-		s := r.Observe("sess-1", 100, "/work/payments-api", "", step.event)
+		s := r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/payments-api", HookEvent: step.event})
 		if s.State != step.want {
 			t.Errorf("after %s state = %q, want %q", step.event, s.State, step.want)
 		}
@@ -50,8 +50,8 @@ func TestStateFollowsHookEvents(t *testing.T) {
 // disturb the state a previous event established.
 func TestUnknownEventLeavesStateAlone(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("sess-1", 100, "/work/api", "", "PermissionRequest")
-	s := r.Observe("sess-1", 100, "/work/api", "", "SomethingNewClaudeCodeAdded")
+	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", HookEvent: "PermissionRequest"})
+	s := r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", HookEvent: "SomethingNewClaudeCodeAdded"})
 	if s.State != Waiting {
 		t.Errorf("state = %q, want it left at %q", s.State, Waiting)
 	}
@@ -62,12 +62,12 @@ func TestUnknownEventLeavesStateAlone(t *testing.T) {
 // session, and stay selected.
 func TestClearedSessionStaysOneSession(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("sess-old", 100, "/work/payments-api", "Fix token refresh", "SessionStart")
+	r.Observe(Observation{ID: "sess-old", PID: 100, Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: "SessionStart"})
 	if _, ok := r.Select("sess-old"); !ok {
 		t.Fatal("could not select the session")
 	}
 
-	r.Observe("sess-new", 100, "/work/payments-api", "", "UserPromptSubmit")
+	r.Observe(Observation{ID: "sess-new", PID: 100, Dir: "/work/payments-api", HookEvent: "UserPromptSubmit"})
 
 	if got := len(r.List()); got != 1 {
 		t.Fatalf("registry holds %d sessions, want the cleared one to have replaced the old", got)
@@ -88,8 +88,8 @@ func TestClearedSessionStaysOneSession(t *testing.T) {
 // did not pick. When the selection ends, there is simply no selection.
 func TestSelectionIsNeverSubstituted(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("sess-1", 100, "/work/payments-api", "", "SessionStart")
-	r.Observe("sess-2", 200, "/work/frontend", "", "SessionStart")
+	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/payments-api", HookEvent: "SessionStart"})
+	r.Observe(Observation{ID: "sess-2", PID: 200, Dir: "/work/frontend", HookEvent: "SessionStart"})
 	if _, ok := r.Select("sess-1"); !ok {
 		t.Fatal("could not select sess-1")
 	}
@@ -103,7 +103,7 @@ func TestSelectionIsNeverSubstituted(t *testing.T) {
 
 func TestSelectUnknownSessionChangesNothing(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("sess-1", 100, "/work/api", "", "SessionStart")
+	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", HookEvent: "SessionStart"})
 	r.Select("sess-1")
 
 	if _, ok := r.Select("sess-gone"); ok {
@@ -151,9 +151,9 @@ func TestDetachIgnoresAReplacedChannel(t *testing.T) {
 // The overview leads with whatever needs the user.
 func TestListLeadsWithAttention(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("idle", 1, "/work/wirelark", "", "Stop")
-	r.Observe("busy", 2, "/work/payments-api", "", "UserPromptSubmit")
-	r.Observe("blocked", 3, "/work/frontend", "", "PermissionRequest")
+	r.Observe(Observation{ID: "idle", PID: 1, Dir: "/work/wirelark", HookEvent: "Stop"})
+	r.Observe(Observation{ID: "busy", PID: 2, Dir: "/work/payments-api", HookEvent: "UserPromptSubmit"})
+	r.Observe(Observation{ID: "blocked", PID: 3, Dir: "/work/frontend", HookEvent: "PermissionRequest"})
 
 	got := r.List()
 	want := []string{"blocked", "busy", "idle"}
@@ -194,7 +194,7 @@ func TestSnapshotRestoresTheSelectedSession(t *testing.T) {
 	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
 	r := NewRegistry()
 	r.Attach("sess-1", ownPID(), "/work/payments-api", Ready, &fakeChannel{})
-	r.Observe("sess-1", ownPID(), "/work/payments-api", "Fix token refresh", "UserPromptSubmit")
+	r.Observe(Observation{ID: "sess-1", PID: ownPID(), Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: "UserPromptSubmit"})
 	r.Select("sess-1")
 	if err := r.Save(); err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestSnapshotRestoresTheSelectedSession(t *testing.T) {
 func TestSnapshotDropsDeadSessions(t *testing.T) {
 	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
 	r := NewRegistry()
-	r.Observe("sess-dead", 0x7fffffff, "/work/api", "", "SessionStart")
+	r.Observe(Observation{ID: "sess-dead", PID: 0x7fffffff, Dir: "/work/api", HookEvent: "SessionStart"})
 	if err := r.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestSnapshotDropsDeadSessions(t *testing.T) {
 
 func TestStaleSessionsExpire(t *testing.T) {
 	r := NewRegistry()
-	r.Observe("sess-1", 100, "/work/api", "", "Stop")
+	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", HookEvent: "Stop"})
 	r.age("sess-1", staleAfter+time.Minute)
 
 	if got := len(r.List()); got != 0 {
@@ -263,7 +263,7 @@ func TestSessionOfFindsTheRenamedSession(t *testing.T) {
 	r := NewRegistry()
 	ch := &fakeChannel{}
 	r.Attach("sess-old", 100, "/work/payments-api", Ready, ch)
-	r.Observe("sess-new", 100, "/work/payments-api", "", "UserPromptSubmit")
+	r.Observe(Observation{ID: "sess-new", PID: 100, Dir: "/work/payments-api", HookEvent: "UserPromptSubmit"})
 
 	s, ok := r.SessionOf(ch)
 	if !ok {
@@ -289,7 +289,7 @@ func (r *Registry) age(id string, by time.Duration) {
 // events are changing them.
 func TestReadersGetCopies(t *testing.T) {
 	r := NewRegistry()
-	got := r.Observe("sess-1", 100, "/work/api", "Fix token refresh", "UserPromptSubmit")
+	got := r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", Title: "Fix token refresh", HookEvent: "UserPromptSubmit"})
 
 	got.Title = "rewritten by the caller"
 	got.State = Idle

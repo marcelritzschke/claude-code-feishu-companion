@@ -47,7 +47,10 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 	p.ProjectDir = dir
 	turn := transcript.Load(p.TranscriptPath, p.PromptID)
 
-	s := d.reg.Observe(p.SessionID, h.PID, dir, turn.Title, p.HookEventName)
+	s := d.reg.Observe(session.Observation{
+		ID: p.SessionID, PID: h.PID, Dir: dir, Title: turn.Title,
+		Transcript: p.TranscriptPath, HookEvent: p.HookEventName,
+	})
 	debuglog.Printf("hook %s from %s", p.HookEventName, s.Describe())
 
 	// Any event that is not the prompt itself proves the session moved on,
@@ -56,11 +59,19 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		d.settleStandingPrompt(ctx, s.ID)
 		d.confirmDelivery(s.ID)
 	}
-	if p.HookEventName == hook.EventSessionEnd {
-		// The session is over: it must leave the overview, and it must not
-		// stay selected as somewhere a message could still be sent.
+	switch p.HookEventName {
+	case hook.EventSessionEnd:
+		// The session is over: it must leave the overview, it must not
+		// stay selected as somewhere a message could still be sent, and
+		// nothing may be left claiming to watch it.
+		d.closeWatch(ctx, s.ID, "This session has ended.")
 		d.reg.Remove(s.ID)
 		return
+	case hook.EventStop, hook.EventStopFailure:
+		// The turn is over, so the live view is too - but its card is left
+		// standing, because the completion notification below settles that
+		// very message into the turn's outcome.
+		d.endWatch(s.ID)
 	}
 
 	(&deliver.Deliverer{
@@ -84,17 +95,23 @@ func continueTarget(s session.Session) string {
 	return s.ID
 }
 
-// skipEvent vetoes the hook-driven card for a decision the daemon is
-// already showing with real buttons. One decision, one card - whichever
-// arrives first wins the message, and the other stays quiet.
+// skipEvent vetoes an event the daemon is already reporting better itself:
+// a decision it is showing with real buttons, or a turn the user is
+// watching live. Either way the rule is one thing, one card - whatever is
+// already in front of the user wins, and the other stays quiet.
 func (d *Daemon) skipEvent(sessionID string) func(string) bool {
 	return func(hookEvent string) bool {
-		if hookEvent != hook.EventPermissionRequest {
-			return false
+		switch hookEvent {
+		case hook.EventPostToolUse:
+			// The live view is already this turn's one card, and far more
+			// current than a progress refresh would be.
+			return d.watching(sessionID)
+		case hook.EventPermissionRequest:
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			p, ok := d.bySession[sessionID]
+			return ok && p.relayed && !p.settled
 		}
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		p, ok := d.bySession[sessionID]
-		return ok && p.relayed && !p.settled
+		return false
 	}
 }

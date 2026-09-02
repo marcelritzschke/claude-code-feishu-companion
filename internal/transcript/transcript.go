@@ -33,6 +33,14 @@ type Turn struct {
 	// LatestTool is the last tool call of the turn, nil when Claude has
 	// only talked so far.
 	LatestTool *ToolCall
+	// Steps are the turn's tool calls in order, each with how it ended.
+	// Only the most recent ones are kept: a live view shows a handful of
+	// items, and a long turn must not grow this without bound.
+	Steps []Step
+	// Progress is the latest thing Claude said in prose this turn - what
+	// it is doing and why, in its own words. Thinking blocks are never
+	// part of it: V3 exposes progress, not reasoning.
+	Progress string
 	// Failed reports whether the turn ended in a state that needs the
 	// user: a validation command it ran was still failing at the end.
 	// A command that failed and later passed is not a failure - agents
@@ -55,6 +63,24 @@ type ToolCall struct {
 	Name  string
 	Input map[string]any
 }
+
+// Step is one tool call of the turn together with how it ended, which is
+// what lets a live view mark an action done, running, or in trouble.
+type Step struct {
+	Tool  string
+	Input map[string]any
+	// Done is false while the call is still running - no result recorded.
+	Done bool
+	// Errored reports that the call came back an error. On its own that
+	// says nothing about the turn: agents routinely recover.
+	Errored bool
+	// Error is the result text of an errored call, empty otherwise.
+	Error string
+}
+
+// maxSteps bounds how much of a turn's activity is kept. A live card shows
+// a handful of items, so the recent ones are the only ones that matter.
+const maxSteps = 40
 
 // fileTools maps tool names that modify files to their path input field.
 var fileTools = map[string]string{
@@ -83,6 +109,8 @@ type message struct {
 
 type contentItem struct {
 	Type string `json:"type"`
+	// text
+	Text string `json:"text"`
 	// tool_use
 	ID    string         `json:"id"`
 	Name  string         `json:"name"`
@@ -104,6 +132,13 @@ type toolUse struct {
 	item  contentItem
 }
 
+// saidAt is one thing Claude said in prose, with where in the session it
+// was said, so the latest one within a turn can be picked out.
+type saidAt struct {
+	index int
+	text  string
+}
+
 // Load reads the transcript at path and returns the turn started by the
 // prompt with the given promptID (falling back to the last prompt in the
 // file). A missing or unreadable transcript yields an empty Turn: the
@@ -121,6 +156,7 @@ func Load(path, promptID string) *Turn {
 		recs     []record
 		prompts  []int // record indices of real user prompts
 		toolUses []toolUse
+		said     []saidAt
 		results  = map[string]toolResult{} // tool_use id -> outcome
 	)
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
@@ -148,10 +184,21 @@ func Load(path, promptID string) *Turn {
 				}
 			}
 		case r.Type == "assistant" && r.Message != nil:
+			var prose []string
 			for _, item := range contentItems(r.Message) {
-				if item.Type == "tool_use" {
+				switch item.Type {
+				case "tool_use":
 					toolUses = append(toolUses, toolUse{index: idx, item: item})
+				case "text":
+					// Only "text" blocks. A "thinking" block is reasoning,
+					// which no Wirelark surface ever shows.
+					if t := strings.TrimSpace(item.Text); t != "" {
+						prose = append(prose, t)
+					}
 				}
+			}
+			if len(prose) > 0 {
+				said = append(said, saidAt{index: idx, text: strings.Join(prose, "\n")})
 			}
 		}
 	}
@@ -174,6 +221,12 @@ func Load(path, promptID string) *Turn {
 
 	t.Start = parseTime(recs[from].Timestamp)
 	t.collect(toolUsesAfter(toolUses, from), results)
+	for i := len(said) - 1; i >= 0; i-- {
+		if said[i].index > from {
+			t.Progress = said[i].text
+			break
+		}
+	}
 	return t
 }
 
@@ -204,9 +257,18 @@ func (t *Turn) collect(uses []toolUse, results map[string]toolResult) {
 		}
 	}
 	for _, u := range uses {
-		if res, ok := results[u.item.ID]; ok && res.errored {
+		res, done := results[u.item.ID]
+		if done && res.errored {
 			t.LastError = res.text // later errors overwrite earlier ones
 		}
+		step := Step{Tool: u.item.Name, Input: u.item.Input, Done: done, Errored: done && res.errored}
+		if step.Errored {
+			step.Error = res.text
+		}
+		t.Steps = append(t.Steps, step)
+	}
+	if len(t.Steps) > maxSteps {
+		t.Steps = t.Steps[len(t.Steps)-maxSteps:]
 	}
 	if len(uses) > 0 {
 		t.LatestTool = &ToolCall{Name: uses[len(uses)-1].item.Name, Input: uses[len(uses)-1].item.Input}

@@ -48,6 +48,11 @@ type Daemon struct {
 	// lastOverview is the sessions the last overview offered, in the order
 	// it numbered them, so a typed "2" means the second one the user saw.
 	lastOverview []string
+	// watches are the sessions the user asked to see live, by session id.
+	watches map[string]*watch
+	// pace is how often a watch looks and how often it may rewrite its
+	// card. Set once at construction and read-only thereafter.
+	pace pace
 
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
@@ -134,6 +139,8 @@ func New(cfg *config.Config, out sender, in inbound) *Daemon {
 		byRequest: map[string]*prompt{},
 		bySession: map[string]*prompt{},
 		awaiting:  map[string]*delivery{},
+		watches:   map[string]*watch{},
+		pace:      defaultPace,
 		stop:      make(chan struct{}),
 	}
 }
@@ -174,6 +181,12 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	cancel()
 	listener.Close() // unblocks the accept loop
 	wg.Wait()
+	// The live cards go last and on a context of their own: the one thing
+	// a stopping daemon still owes the user is that nothing it left on
+	// their phone claims to be watching something.
+	shutdown, done := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
+	d.closeAllWatches(shutdown)
+	done()
 	if err := d.reg.Save(); err != nil {
 		debuglog.Printf("save sessions: %v", err)
 	}

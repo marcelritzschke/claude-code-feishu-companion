@@ -38,10 +38,18 @@ on the event and configured detail level, that can include:
 - a completion or failure summary;
 - validation results and filenames extracted from the turn;
 - an excerpt of Claude's final answer;
-- tool and command details needed to understand a permission request.
+- tool and command details needed to understand a permission request;
+- while a session is being watched, a short description of the current work and
+  a few condensed recent actions.
 
 Wirelark does not upload a terminal stream or a complete session transcript.
 The transcript is read locally to produce the selected summary content.
+
+Watching is opt-in and per session. It is started explicitly from Feishu, sends
+no additional Claude Code events, and ends when the turn ends. While a session
+is watched, Wirelark re-reads its transcript locally every few seconds and
+rewrites one existing card; it does not send a message per action, and it never
+sends model reasoning.
 
 Inbound messages and card actions are accepted only from the configured owner.
 Remote permission approval is nevertheless a real grant of authority: anyone

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +45,14 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		d.answerPermission(ctx, notify.Action{
 			Kind: notify.ActionPermit, Request: requestID, Verdict: verdict,
 		}, "")
+		return
+	}
+	if number, ok := parseWatch(text); ok {
+		d.watchRequest(ctx, number)
+		return
+	}
+	if parseStopWatch(text) {
+		d.stopWatchRequest(ctx)
 		return
 	}
 	if id, ok := d.pickFromOverview(text); ok {
@@ -152,6 +161,10 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 		d.selectSession(ctx, act.Session)
 	case notify.ActionPermit:
 		d.answerPermission(ctx, act, action.MessageID)
+	case notify.ActionWatch:
+		d.watchSession(ctx, act.Session)
+	case notify.ActionUnwatch:
+		d.closeWatch(ctx, act.Session, "You stopped watching this session.")
 	default:
 		debuglog.Printf("ignoring unknown card action %q", act.Kind)
 	}
@@ -170,6 +183,69 @@ func (d *Daemon) selectSession(ctx context.Context, id string) {
 	card, err := notify.SelectedCard(s)
 	d.sendCard(ctx, card, err)
 	debuglog.Printf("selected %s", s.Describe())
+}
+
+// watchRequest opens the live view of the session the user named: the one
+// they picked out of the last overview, or the one they are already
+// talking to. It never guesses - the same rule that governs where a
+// message goes governs which session the user is shown.
+func (d *Daemon) watchRequest(ctx context.Context, number int) {
+	if number > 0 {
+		id, ok := d.pickFromOverview(strconv.Itoa(number))
+		if !ok {
+			d.say(ctx, "There is no session with that number.")
+			d.showOverview(ctx)
+			return
+		}
+		d.watchSession(ctx, id)
+		return
+	}
+	s, ok := d.reg.Selected()
+	if !ok {
+		d.say(ctx, "Which session do you want to watch?")
+		d.showOverview(ctx)
+		return
+	}
+	d.watchSession(ctx, s.ID)
+}
+
+// watchSession opens the live view of one session by id.
+func (d *Daemon) watchSession(ctx context.Context, id string) {
+	s, ok := d.reg.Get(id)
+	if !ok {
+		d.say(ctx, "That session has ended.")
+		d.showOverview(ctx)
+		return
+	}
+	d.startWatch(ctx, s)
+}
+
+// stopWatchRequest closes the live view the user meant: the selected
+// session's, or the only one open when nothing is selected.
+func (d *Daemon) stopWatchRequest(ctx context.Context) {
+	note := "You stopped watching this session."
+	if s, ok := d.reg.Selected(); ok && d.watching(s.ID) {
+		d.closeWatch(ctx, s.ID, note)
+		d.say(ctx, "Stopped watching "+s.Label()+".")
+		return
+	}
+	d.mu.Lock()
+	open := make([]string, 0, len(d.watches))
+	for id := range d.watches {
+		open = append(open, id)
+	}
+	d.mu.Unlock()
+
+	switch len(open) {
+	case 0:
+		d.say(ctx, "You are not watching any session.")
+	case 1:
+		d.closeWatch(ctx, open[0], note)
+		d.say(ctx, "Stopped watching.")
+	default:
+		d.say(ctx, "Pick the session you want to stop watching first.")
+		d.showOverview(ctx)
+	}
 }
 
 // deliveryProof is how long a message has to produce some sign of life from

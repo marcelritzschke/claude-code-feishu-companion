@@ -128,3 +128,17 @@ claude --dangerously-load-development-channels server:wirelark
 
 A session started with plain `claude` is still discovered and sends
 notifications, but it appears in Feishu as **Notifications only**.
+
+## Watching a session
+
+Watching needs no setup and no configuration of its own. Open a session from
+the Feishu overview and tap **Watch**, or reply `watch` for the selected
+session or `watch 2` for the second one listed. One card then updates in place
+with what Claude is broadly doing until the turn finishes, at which point it
+settles into the usual completion or failure card.
+
+Reply `stop watching` (or tap **Stop watching**) to close it early. A watch
+also ends on its own when the turn ends, when the session ends, and after two
+hours. Watching only reads what the session's hooks already report, so a
+**Notifications only** session can be watched even though it cannot be
+continued.

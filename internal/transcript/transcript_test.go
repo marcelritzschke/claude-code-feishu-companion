@@ -3,6 +3,7 @@ package transcript
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -171,5 +172,66 @@ func TestLoadNoErrorsMeansNoLastError(t *testing.T) {
 	turn := Load(writeTranscript(t, clean), "p-1")
 	if turn.Failed || turn.LastError != "" {
 		t.Errorf("clean turn: failed=%v lastError=%q", turn.Failed, turn.LastError)
+	}
+}
+
+func TestTurnStepsRecordOrderAndOutcome(t *testing.T) {
+	turn := Load(writeTranscript(t, fixture), "p-2")
+
+	// The sidechain edit is subagent work and belongs to no turn here.
+	want := []struct {
+		tool    string
+		errored bool
+	}{
+		{"Edit", false},
+		{"Bash", false},
+		{"Bash", true}, // pytest failed, then was rerun
+		{"Write", false},
+		{"Bash", false},
+		{"Bash", false},
+	}
+	if len(turn.Steps) != len(want) {
+		t.Fatalf("steps = %+v, want %d", turn.Steps, len(want))
+	}
+	for i, w := range want {
+		got := turn.Steps[i]
+		if got.Tool != w.tool || got.Errored != w.errored {
+			t.Errorf("step %d = %s errored=%v, want %s errored=%v", i, got.Tool, got.Errored, w.tool, w.errored)
+		}
+		if !got.Done {
+			t.Errorf("step %d has a result and should be done", i)
+		}
+	}
+	if turn.Steps[2].Error != "1 failed" {
+		t.Errorf("a failed step should carry its error, got %q", turn.Steps[2].Error)
+	}
+}
+
+func TestStepIsUnfinishedUntilItsResultArrives(t *testing.T) {
+	const running = `{"type":"user","promptId":"p-1","timestamp":"2026-08-31T07:00:00.000Z","message":{"role":"user","content":"run the tests"}}
+{"type":"assistant","timestamp":"2026-08-31T07:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"go test ./..."}}]}}
+`
+	turn := Load(writeTranscript(t, running), "p-1")
+	if len(turn.Steps) != 1 {
+		t.Fatalf("steps = %+v", turn.Steps)
+	}
+	if turn.Steps[0].Done {
+		t.Error("a tool call with no result yet is still running")
+	}
+}
+
+func TestProgressIsTheLatestProseOfThisTurn(t *testing.T) {
+	const said = `{"type":"user","promptId":"p-1","timestamp":"2026-08-31T07:00:00.000Z","message":{"role":"user","content":"earlier"}}
+{"type":"assistant","timestamp":"2026-08-31T07:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"an older answer"}]}}
+{"type":"user","promptId":"p-2","timestamp":"2026-08-31T07:10:00.000Z","message":{"role":"user","content":"fix it"}}
+{"type":"assistant","timestamp":"2026-08-31T07:10:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Reading the auth package."}]}}
+{"type":"assistant","timestamp":"2026-08-31T07:10:02.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"the user probably wants X"},{"type":"text","text":"Found duplicate refresh validation."}]}}
+`
+	turn := Load(writeTranscript(t, said), "p-2")
+	if want := "Found duplicate refresh validation."; turn.Progress != want {
+		t.Errorf("progress = %q, want %q", turn.Progress, want)
+	}
+	if strings.Contains(turn.Progress, "probably wants") {
+		t.Error("reasoning must never become progress")
 	}
 }

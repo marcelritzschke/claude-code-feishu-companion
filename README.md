@@ -65,6 +65,32 @@ Tap a session or reply with its number. Following messages go to that specific
 session and no other. If it ends, Wirelark clears the selection instead of
 silently redirecting you elsewhere.
 
+### A quiet live view, when you ask for it
+
+Sessions stay quiet unless you choose to look. Tap **Watch** on a session, or
+reply `watch`, and one card follows it:
+
+```text
+🟢 Claude is working
+Fix token refresh · payments-api · 6m 12s
+
+Current progress
+Found duplicate refresh validation. Consolidating
+the logic and checking the callers.
+
+Recent activity
+✓ Read 2 files
+✓ Updated refresh.go
+◌ Running go test ./...
+
+Updated just now
+```
+
+That one card updates in place — never a message per action, never raw logs or
+model reasoning — and settles into the ordinary completion card when the turn
+finishes. Watching needs no extra setup and no different way of starting
+Claude Code.
+
 ## The workflow
 
 ```text
@@ -78,7 +104,7 @@ Feishu tells you when Claude needs you
         ↓
 Select the exact running session
         ↓
-Continue it remotely
+Continue it remotely, or watch it work
         ↓
 Return to the terminal
         ↓
@@ -86,9 +112,10 @@ Continue the same native Claude Code session
 ```
 
 Wirelark provides focused attention and completion cards, a local session
-overview, exact-session follow-ups, and optional remote permission decisions.
-Buttons are convenient but not required: typed session numbers and explicit
-permission replies work too.
+overview, exact-session follow-ups, an optional live view of a chosen session,
+and optional remote permission decisions. Buttons are convenient but not
+required: typed session numbers, `watch`, and explicit permission replies work
+too.
 
 ## How it differs from agent gateways
 
@@ -156,7 +183,9 @@ configuration options, and alternate install paths are covered in
 Wirelark runs a lightweight local daemon that maintains the Feishu connection
 and knows about local Claude Code sessions. Claude Code hooks provide lifecycle,
 attention, and completion events. Claude Channels provide the supported path
-for sending a Feishu message into an already-running session.
+for sending a Feishu message into an already-running session. Watching a
+session adds nothing to that: the daemon simply re-reads the session's local
+transcript while you are looking, and rewrites one card.
 
 ```text
                          Feishu
@@ -218,11 +247,12 @@ handling are documented in [Security and operations](docs/security-and-operation
 ## Project status
 
 Focused notifications, completion summaries, local session discovery,
-exact-session follow-ups, optional permission decisions, release-binary
-installation, and QR onboarding are implemented today.
+exact-session follow-ups, optional permission decisions, the optional live view
+of a chosen session, release-binary installation, and QR onboarding are
+implemented today.
 
-The next product direction is an optional concise live companion for a selected
-session—not terminal streaming and not a second Claude Code interface. See the
+Wirelark stays deliberately short of terminal streaming and of being a second
+Claude Code interface. See the
 [product experience specification](docs/product-experience-spec.md) for the
 longer design rationale.
 

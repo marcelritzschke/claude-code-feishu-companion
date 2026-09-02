@@ -37,24 +37,42 @@ func NewRegistry() *Registry {
 	return &Registry{sessions: map[string]*Session{}}
 }
 
+// Observation is everything one hook event says about a session. Every
+// field but ID is optional: a hook reports what it could see, and a field
+// it left empty leaves what the registry already knew standing.
+type Observation struct {
+	ID  string
+	PID int
+	// Dir is the project directory the session belongs to.
+	Dir string
+	// Title is the session's own name for its work.
+	Title string
+	// Transcript is where Claude Code is writing this session's transcript.
+	Transcript string
+	// HookEvent is the Claude Code event this observation came from.
+	HookEvent string
+}
+
 // Observe records what a hook event says about a session and returns the
-// session it belongs to. dir is the project directory, pid the claude
-// process; either may be zero when the hook could not see it.
-func (r *Registry) Observe(id string, pid int, dir, title, hookEvent string) Session {
+// session it belongs to.
+func (r *Registry) Observe(o Observation) Session {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	s := r.resolve(id, pid)
-	if dir != "" {
-		s.Dir = dir
+	s := r.resolve(o.ID, o.PID)
+	if o.Dir != "" {
+		s.Dir = o.Dir
 	}
-	if title != "" {
-		s.Title = title
+	if o.Title != "" {
+		s.Title = o.Title
 	}
-	if pid != 0 {
-		s.PID = pid
+	if o.Transcript != "" {
+		s.Transcript = o.Transcript
 	}
-	if state, ok := StateFor(hookEvent); ok {
+	if o.PID != 0 {
+		s.PID = o.PID
+	}
+	if state, ok := StateFor(o.HookEvent); ok {
 		s.State = state
 	}
 	s.LastSeen = time.Now()
@@ -262,12 +280,13 @@ type snapshot struct {
 }
 
 type snapshotSession struct {
-	ID       string    `json:"id"`
-	PID      int       `json:"pid"`
-	Dir      string    `json:"dir"`
-	Title    string    `json:"title,omitempty"`
-	State    State     `json:"state"`
-	LastSeen time.Time `json:"last_seen"`
+	ID         string    `json:"id"`
+	PID        int       `json:"pid"`
+	Dir        string    `json:"dir"`
+	Title      string    `json:"title,omitempty"`
+	Transcript string    `json:"transcript,omitempty"`
+	State      State     `json:"state"`
+	LastSeen   time.Time `json:"last_seen"`
 }
 
 // Save writes the registry to disk.
@@ -277,7 +296,7 @@ func (r *Registry) Save() error {
 	for _, s := range r.sessions {
 		snap.Sessions = append(snap.Sessions, snapshotSession{
 			ID: s.ID, PID: s.PID, Dir: s.Dir, Title: s.Title,
-			State: s.State, LastSeen: s.LastSeen,
+			Transcript: s.Transcript, State: s.State, LastSeen: s.LastSeen,
 		})
 	}
 	r.mu.Unlock()
@@ -317,7 +336,8 @@ func Load() *Registry {
 		}
 		r.sessions[s.ID] = &Session{
 			ID: s.ID, PID: s.PID, Dir: s.Dir, Title: s.Title,
-			State: s.State, Remote: Notifications, LastSeen: s.LastSeen,
+			Transcript: s.Transcript, State: s.State,
+			Remote: Notifications, LastSeen: s.LastSeen,
 		}
 	}
 	if _, ok := r.sessions[snap.Selected]; ok {

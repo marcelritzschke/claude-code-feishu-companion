@@ -238,7 +238,7 @@ func askBehavior(cfg *config.Config) error {
 	cfg.Detail = detail
 
 	remote, err := tui.Choose("Continue sessions from Feishu?",
-		"Pick one of the Claude Code sessions running here and send it a follow-up.",
+		"Pick one of the Claude Code sessions running here, send it a follow-up, or watch it work.",
 		[]tui.Choice[config.Switch]{
 			{Label: "Yes", Note: "reply from your phone", Value: config.On},
 			{Label: "No", Note: "notifications only", Value: config.Off},

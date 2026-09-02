@@ -88,7 +88,19 @@ func SelectedCard(s session.Session) (string, error) {
 	if !s.Remote.Continuable() {
 		footer = "This session was not started with Wirelark enabled, so it can only send you notifications."
 	}
-	return card("blue", s.Label(), "", bodies, nil, footer)
+
+	// Watching needs no channel - it only reads what the session's hooks
+	// already report - so it is offered even for a session that can do
+	// nothing else from here.
+	var buttons []Button
+	if s.Watchable() {
+		buttons = append(buttons, Button{
+			Label:  "Watch",
+			Action: Action{Kind: ActionWatch, Session: s.ID},
+		})
+		footer += "\nOr tap Watch, or reply  watch  , to see what it is doing."
+	}
+	return card("blue", s.Label(), "", bodies, buttons, footer)
 }
 
 // sessionIdentity is the block that names a session on its own card: its

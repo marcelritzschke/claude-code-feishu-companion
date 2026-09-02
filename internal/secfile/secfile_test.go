@@ -3,6 +3,7 @@ package secfile
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -23,15 +24,19 @@ func TestWriteAtomicCreatesParentsWithPerm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("file perm = %v, want 0600", info.Mode().Perm())
-	}
 	dir, err := os.Stat(filepath.Dir(p))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dir.Mode().Perm() != 0o700 {
-		t.Errorf("dir perm = %v, want 0700", dir.Mode().Perm())
+	// Windows has no POSIX permission bits to assert on: os.Chmod there
+	// only toggles the read-only attribute.
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("file perm = %v, want 0600", info.Mode().Perm())
+		}
+		if dir.Mode().Perm() != 0o700 {
+			t.Errorf("dir perm = %v, want 0700", dir.Mode().Perm())
+		}
 	}
 }
 

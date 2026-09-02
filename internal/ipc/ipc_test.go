@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,9 +14,19 @@ import (
 
 // private points every path this package uses at a directory of the test's
 // own, so a test never disturbs the user's running daemon.
+//
+// It uses a short-named MkdirTemp rather than t.TempDir(): t.TempDir()
+// nests the full test name under the OS temp dir, and on macOS that
+// combination routinely exceeds the ~104-byte length unix domain sockets
+// allow for sun_path, so Listen fails with "bind: invalid argument".
 func private(t *testing.T) {
 	t.Helper()
-	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
+	dir, err := os.MkdirTemp("", "wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Setenv("WIRELARK_STATE_DIR", dir)
 }
 
 func TestRoundTrip(t *testing.T) {

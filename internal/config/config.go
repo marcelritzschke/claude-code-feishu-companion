@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/marcelritzschke/wirelark/internal/secfile"
@@ -76,17 +77,46 @@ func DetectOpenIDType(s string) OpenIDType {
 	}
 }
 
+// Brand names which Feishu environment the app lives in. The two are
+// separate deployments with separate hostnames, and an app created in one
+// does not exist in the other, so every call - REST and WebSocket alike -
+// has to be aimed at the right one.
+type Brand string
+
+const (
+	// BrandFeishu is the mainland Chinese deployment, open.feishu.cn. It
+	// is the default, so a config written before this field existed keeps
+	// working.
+	BrandFeishu Brand = "feishu"
+	// BrandLark is the international deployment, open.larksuite.com.
+	BrandLark Brand = "lark"
+)
+
+// OpenBaseURL is the open-platform host for the configured brand. The SDK
+// derives its OAuth host from this one, so it is the only address that has
+// to be configured.
+func (c *Config) OpenBaseURL() string {
+	if c.Brand == BrandLark {
+		return lark.LarkBaseUrl
+	}
+	return lark.FeishuBaseUrl
+}
+
 // EnvVar lets tests (and users) point the binary at another config file.
 const EnvVar = "WIRELARK_CONFIG"
 
 // Config is the on-disk configuration.
 type Config struct {
-	AppID      string      `toml:"app_id"`
-	AppSecret  string      `toml:"app_secret"`
-	OpenID     string      `toml:"open_id"`
-	OpenIDKind OpenIDType  `toml:"open_id_type"`
-	Notify     NotifyLevel `toml:"notify"`
-	Detail     DetailLevel `toml:"detail"`
+	AppID      string     `toml:"app_id"`
+	AppSecret  string     `toml:"app_secret"`
+	OpenID     string     `toml:"open_id"`
+	OpenIDKind OpenIDType `toml:"open_id_type"`
+	// Brand is which Feishu deployment the app belongs to. Setup records
+	// what the registration reported rather than asking, and an empty
+	// value means the Feishu default.
+	Brand  Brand       `toml:"brand"`
+	Notify NotifyLevel `toml:"notify"`
+	Detail DetailLevel `toml:"detail"`
 
 	// Remote is whether a session may be continued from Feishu at all.
 	// With it off, Wirelark is exactly the V1 one-way notifier.
@@ -170,6 +200,9 @@ func (c *Config) applyDefaults() {
 	case OpenIDTypeOpenID, OpenIDTypeUserID, OpenIDTypeUnionID:
 	default:
 		c.OpenIDKind = OpenIDTypeOpenID
+	}
+	if c.Brand != BrandFeishu && c.Brand != BrandLark {
+		c.Brand = BrandFeishu
 	}
 }
 

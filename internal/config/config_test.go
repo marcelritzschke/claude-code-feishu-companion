@@ -77,3 +77,32 @@ func TestLoadMalformed(t *testing.T) {
 		t.Error("expected error for malformed config")
 	}
 }
+
+func TestBrandChoosesTheDeployment(t *testing.T) {
+	feishu := (&Config{Brand: BrandFeishu}).OpenBaseURL()
+	lark := (&Config{Brand: BrandLark}).OpenBaseURL()
+	if feishu == lark {
+		t.Fatalf("both brands resolve to %s; an app exists in one deployment only", feishu)
+	}
+	// A config written before the field existed must keep reaching the
+	// deployment it was set up against.
+	if got := (&Config{}).OpenBaseURL(); got != feishu {
+		t.Errorf("unset brand resolves to %s, want the Feishu default %s", got, feishu)
+	}
+}
+
+func TestLoadDefaultsUnknownBrand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	t.Setenv(EnvVar, path)
+	if err := os.WriteFile(path, []byte("app_id = \"cli_x\"\nbrand = \"slack\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Brand != BrandFeishu {
+		t.Errorf("brand = %q, want the default %q", got.Brand, BrandFeishu)
+	}
+}

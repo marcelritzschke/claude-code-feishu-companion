@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +19,9 @@ import (
 	"github.com/marcelritzschke/wirelark/internal/hooksreg"
 	"github.com/marcelritzschke/wirelark/internal/ipc"
 	"github.com/marcelritzschke/wirelark/internal/notify"
+	"github.com/marcelritzschke/wirelark/internal/register"
 	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/wirelark/internal/tui"
 )
 
 const initTimeout = 15 * time.Second
@@ -30,78 +30,167 @@ const initTimeout = 15 * time.Second
 // a message. Generous: they have to pick up their phone.
 const inboundCheckTimeout = 2 * time.Minute
 
+// registerTimeout bounds the QR flow generously. The code Feishu issues
+// lives about ten minutes and reports its own expiry, so this is only a
+// backstop against a poll that never returns.
+const registerTimeout = 15 * time.Minute
+
+// setupPath is how the Feishu app Wirelark talks through came to exist. It
+// is remembered only so that the advice printed when something does not
+// work matches what the user actually did: telling someone to tick a box
+// in a console they never opened is worse than saying nothing.
+type setupPath int
+
+const (
+	// pathScanned means Feishu created the app from the QR registration,
+	// with Wirelark's permissions and subscriptions already requested.
+	pathScanned setupPath = iota
+	// pathExisting means the user brought their own app, so nothing is
+	// known about how it is configured.
+	pathExisting
+)
+
 // runInit is interactive and allowed to fail loudly - it is never run by a
 // hook. Order matters: validate credentials with a test card before saving
 // the config or touching settings.json.
 func runInit() error {
-	reader := bufio.NewReader(os.Stdin)
+	// Setup holds the terminal in raw mode so its questions can read
+	// arrow keys. Close gives it back, and must run whichever way this
+	// returns - including through a failure partway down.
+	defer tui.Close()
+	tui.Title("Wirelark", "Claude Code, on your phone")
 
-	cfg, client, err := askCredentials(reader)
+	cfg, client, how, err := connectFeishu()
 	if err != nil {
 		return err
 	}
-	askBehavior(reader, cfg)
-
-	// The test card is a real completion card, so setup exercises the exact
-	// path a finished turn takes.
-	cwd, _ := os.Getwd()
-	testTurn := &transcript.Turn{Start: time.Now().Add(-42 * time.Second)}
-	testCard, err := notify.CompletionCard(&hook.Payload{
-		HookEventName:        hook.EventStop,
-		Cwd:                  cwd,
-		LastAssistantMessage: "Wirelark is connected. You will get a message here when Claude finishes, hits a problem, or needs a decision from you.",
-	}, testTurn, notify.Options{Detail: deliver.DetailOf(cfg)})
-	if err != nil {
+	if err := askBehavior(cfg); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
-	defer cancel()
-	if _, err := client.SendCard(ctx, testCard); err != nil {
-		return fmt.Errorf("test card: %w (check app credentials, bot capability, and that you are in the app's availability scope)", err)
+	if err := sendTestCard(cfg, client, how); err != nil {
+		return err
 	}
-	fmt.Println("test card delivered - check your Feishu DM")
 
 	if err := cfg.Save(); err != nil {
 		return err
 	}
 	path, _ := config.Path()
-	fmt.Printf("config saved to %s\n", path)
+	tui.Done("Settings saved")
+	tui.Detail(path)
 
 	cmd, err := executableCommand()
 	if err != nil {
 		return err
 	}
-	if err := registerHooks(reader, cfg, cmd); err != nil {
+	if err := registerHooks(cfg, cmd); err != nil {
 		return err
 	}
 	if !cfg.RemoteEnabled() {
 		return nil
 	}
-	if err := registerChannel(reader); err != nil {
+	if err := registerChannel(); err != nil {
 		return err
 	}
-	checkReturnPath()
+	checkReturnPath(how)
 	explainLaunch()
 	return nil
 }
 
-// askCredentials collects the Feishu app identity and confirms it can be
-// used, before anything is written anywhere.
-func askCredentials(reader *bufio.Reader) (*config.Config, *feishu.Client, error) {
-	appID := prompt(reader, "Feishu app_id (cli_...)")
-	if appID == "" {
-		return nil, nil, errors.New("app_id is required")
-	}
-	appSecret := prompt(reader, "Feishu app_secret (input is visible; run in a private terminal)")
-	if appSecret == "" {
-		return nil, nil, errors.New("app_secret is required")
-	}
-	ident := prompt(reader, "Your Feishu user id (ou_... / on_... / user_id) or the email of your Feishu account")
-	if ident == "" {
-		return nil, nil, errors.New("user id or email is required")
+// connectFeishu gets Wirelark a working Feishu app and the identity of the
+// person it belongs to.
+//
+// It opens straight into the QR code rather than asking which way the user
+// wants to do this. Almost nobody arrives holding a Feishu app, and asking
+// everyone a question that only matters to a few is how setup used to
+// start with a request for an App Secret. The existing-app path is offered
+// on the scan screen instead, and again if the scan does not work out.
+func connectFeishu() (*config.Config, *feishu.Client, setupPath, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), registerTimeout)
+	defer cancel()
+
+	res, outcome, err := tui.Scan(ctx)
+	switch outcome {
+	case tui.Scanned:
+		cfg, client, err := fromScan(res)
+		return cfg, client, pathScanned, err
+
+	case tui.Cancelled:
+		return nil, nil, pathScanned, err
+
+	case tui.Failed:
+		// The scan ended somewhere the user cannot fix by scanning again.
+		// Offering the other path beats sending them away with an error.
+		tui.Fail("Registration did not complete")
+		tui.Detail(err.Error())
+		tui.Blank()
+		fallback, ferr := tui.Confirm("Use an existing Feishu app instead?",
+			"Someone with a Feishu app already created - an administrator, usually - can enter it by hand.")
+		if ferr != nil {
+			return nil, nil, pathExisting, ferr
+		}
+		if !fallback {
+			return nil, nil, pathScanned, err
+		}
 	}
 
-	cfg := &config.Config{AppID: appID, AppSecret: appSecret}
+	cfg, client, err := askCredentials()
+	return cfg, client, pathExisting, err
+}
+
+// fromScan turns a completed registration into a configuration.
+// Everything the manual path has to ask for - the app id, the secret, who
+// the user is, which Feishu they are on - comes back from the one scan.
+func fromScan(res *register.Result) (*config.Config, *feishu.Client, error) {
+	if res.OwnerOpenID == "" {
+		// Without an identity there is no owner, and Wirelark would have
+		// nobody to send to and nobody to accept messages from.
+		return nil, nil, errors.New("feishu did not report who scanned the code")
+	}
+	cfg := &config.Config{
+		AppID:      res.AppID,
+		AppSecret:  res.AppSecret,
+		OpenID:     res.OwnerOpenID,
+		OpenIDKind: config.OpenIDTypeOpenID,
+		Brand:      res.Brand,
+	}
+	client, err := feishu.New(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	tui.Done("Connected to Feishu")
+	tui.Detail("the account you scanned with is this computer's Wirelark owner")
+	tui.Blank()
+	return cfg, client, nil
+}
+
+// askCredentials collects the Feishu app identity by hand, for a managed
+// environment where an administrator creates the app and hands it over.
+func askCredentials() (*config.Config, *feishu.Client, error) {
+	tui.Step("Use an existing Feishu app")
+	tui.Blank()
+
+	appID, err := tui.Ask("App ID", "From the Feishu developer console, under Credentials.", "cli_...", true)
+	if err != nil {
+		return nil, nil, err
+	}
+	appSecret, err := tui.AskSecret("App Secret", "Not echoed, and stored with the config file at 0600.")
+	if err != nil {
+		return nil, nil, err
+	}
+	brand, err := tui.Choose("Which Feishu is the app registered on?", "", []tui.Choice[config.Brand]{
+		{Label: "Feishu", Note: "open.feishu.cn", Value: config.BrandFeishu},
+		{Label: "Lark", Note: "open.larksuite.com", Value: config.BrandLark},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	ident, err := tui.Ask("Who is Wirelark for?",
+		"Your Feishu user id, or the email address on your Feishu account.", "ou_... or you@company.com", true)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cfg := &config.Config{AppID: appID, AppSecret: appSecret, Brand: brand}
 	client, err := feishu.New(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -120,54 +209,102 @@ func askCredentials(reader *bufio.Reader) (*config.Config, *feishu.Client, error
 			return nil, nil, fmt.Errorf("resolving email: %w", err)
 		}
 		cfg.OpenID = openID
-		fmt.Printf("resolved open_id: %s\n", openID)
+		tui.Done("Found your Feishu account")
+		tui.Detail(openID)
 	}
+	tui.Blank()
 	return cfg, client, nil
 }
 
 // askBehavior asks the four questions that describe what Wirelark does,
 // in the user's terms rather than in hook events.
-func askBehavior(reader *bufio.Reader, cfg *config.Config) {
-	fmt.Println("\nNotification level")
-	fmt.Println("  1) Important only - attention, failures, completion (default)")
-	fmt.Println("  2) Important + progress - also pings once a task runs long")
-	cfg.Notify = config.NotifyLevel(promptChoice(reader, "Choice",
-		[]string{string(config.NotifyImportant), string(config.NotifyProgress)}))
+func askBehavior(cfg *config.Config) error {
+	notify, err := tui.Choose("What should Wirelark tell you about?", "", []tui.Choice[config.NotifyLevel]{
+		{Label: "Important only", Note: "attention, failures, completion", Value: config.NotifyImportant},
+		{Label: "Important and progress", Note: "also pings once a task runs long", Value: config.NotifyProgress},
+	})
+	if err != nil {
+		return err
+	}
+	cfg.Notify = notify
 
-	fmt.Println("\nCompletion detail")
-	fmt.Println("  1) Normal - summary, validation, and Claude's answer (default)")
-	fmt.Println("  2) Compact - one-glance summary")
-	cfg.Detail = config.DetailLevel(promptChoice(reader, "Choice",
-		[]string{string(config.DetailNormal), string(config.DetailCompact)}))
+	detail, err := tui.Choose("How much should a finished turn say?", "", []tui.Choice[config.DetailLevel]{
+		{Label: "Normal", Note: "summary, validation, and Claude's answer", Value: config.DetailNormal},
+		{Label: "Compact", Note: "one-glance summary", Value: config.DetailCompact},
+	})
+	if err != nil {
+		return err
+	}
+	cfg.Detail = detail
 
-	fmt.Println("\nContinue sessions from Feishu")
-	fmt.Println("  1) Yes - pick a running Claude Code session and send it a message (default)")
-	fmt.Println("  2) No  - notifications only, as before")
-	cfg.Remote = config.Switch(promptChoice(reader, "Choice",
-		[]string{string(config.On), string(config.Off)}))
+	remote, err := tui.Choose("Continue sessions from Feishu?",
+		"Pick one of the Claude Code sessions running here and send it a follow-up.",
+		[]tui.Choice[config.Switch]{
+			{Label: "Yes", Note: "reply from your phone", Value: config.On},
+			{Label: "No", Note: "notifications only", Value: config.Off},
+		})
+	if err != nil {
+		return err
+	}
+	cfg.Remote = remote
 
 	cfg.RemotePermissions = config.Off
 	if !cfg.RemoteEnabled() {
-		return
+		return nil
 	}
-	fmt.Println("\nApprove permission requests from Feishu")
-	fmt.Println("  Anyone who can message your Wirelark bot can allow or deny a command")
-	fmt.Println("  in your session while this is on.")
-	fmt.Println("  1) Yes - relay permission prompts with Allow and Deny buttons (default)")
-	fmt.Println("  2) No  - permission notifications only; answer in Claude Code")
-	cfg.RemotePermissions = config.Switch(promptChoice(reader, "Choice",
-		[]string{string(config.On), string(config.Off)}))
+	perms, err := tui.Choose("Approve permission requests from Feishu?",
+		"Anyone who can message your Wirelark bot can allow or deny a command in your session while this is on.",
+		[]tui.Choice[config.Switch]{
+			{Label: "Yes", Note: "cards get Allow and Deny buttons", Value: config.On},
+			{Label: "No", Note: "notifications only; answer in Claude Code", Value: config.Off},
+		})
+	if err != nil {
+		return err
+	}
+	cfg.RemotePermissions = perms
+	return nil
+}
+
+// sendTestCard proves the credentials before anything is written
+// anywhere. The card is a real completion card, so setup exercises the
+// exact path a finished turn takes.
+func sendTestCard(cfg *config.Config, client *feishu.Client, how setupPath) error {
+	cwd, _ := os.Getwd()
+	testTurn := &transcript.Turn{Start: time.Now().Add(-42 * time.Second)}
+	card, err := notify.CompletionCard(&hook.Payload{
+		HookEventName:        hook.EventStop,
+		Cwd:                  cwd,
+		LastAssistantMessage: "Wirelark is connected. You will get a message here when Claude finishes, hits a problem, or needs a decision from you.",
+	}, testTurn, notify.Options{Detail: deliver.DetailOf(cfg)})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+	defer cancel()
+	if _, err := client.SendCard(ctx, card); err != nil {
+		tui.Fail("Test card would not send")
+		tui.Detail(err.Error())
+		tui.Detail(whyNoCard(how))
+		return errors.New("Feishu rejected the test card")
+	}
+	tui.Done("Test card delivered - check your Feishu DM")
+	return nil
 }
 
 // registerHooks puts Wirelark's hooks in the user's Claude Code settings.
-func registerHooks(reader *bufio.Reader, cfg *config.Config, cmd string) error {
-	if !confirm(reader, "Register hooks in ~/.claude/settings.json? [Y/n] ") {
-		fmt.Println("skipped hook registration")
-		return nil
-	}
+func registerHooks(cfg *config.Config, cmd string) error {
 	settingsPath, err := hooksreg.SettingsPath()
 	if err != nil {
 		return err
+	}
+	ok, err := tui.Confirm("Register Wirelark's hooks with Claude Code?",
+		"Adds Wirelark to "+settingsPath+", keeping a backup alongside.")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		tui.Warn("Skipped hook registration - Wirelark will stay quiet until it is done")
+		return nil
 	}
 	changed, err := hooksreg.Register(settingsPath, cmd, hooksreg.Settings{
 		Progress: cfg.ProgressEnabled(),
@@ -177,31 +314,38 @@ func registerHooks(reader *bufio.Reader, cfg *config.Config, cmd string) error {
 		return fmt.Errorf("registering hooks (a backup was written if the file changed): %w", err)
 	}
 	if changed {
-		fmt.Printf("hooks registered in %s (backup alongside)\n", settingsPath)
+		tui.Done("Hooks registered")
 	} else {
-		fmt.Printf("hooks already registered in %s\n", settingsPath)
+		tui.Done("Hooks already registered")
 	}
+	tui.Detail(settingsPath)
 	return nil
 }
 
 // registerChannel registers the channel server with Claude Code, through
 // Claude Code's own CLI. ~/.claude.json is Claude Code's state file, not a
 // configuration format Wirelark should be editing behind its back.
-func registerChannel(reader *bufio.Reader) error {
+func registerChannel() error {
 	exe, err := executablePath()
 	if err != nil {
 		return err
 	}
 	addArgs := []string{"mcp", "add", "-s", "user", channel.ServerName, "--", exe, "channel"}
 
-	if !confirm(reader, "Register the Wirelark channel with Claude Code? [Y/n] ") {
-		printChannelCommand(addArgs)
+	ok, err := tui.Confirm("Register the Wirelark channel with Claude Code?",
+		"This is what carries your replies into a running session.")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		tui.Warn("Skipped - register it yourself with:")
+		tui.Detail("claude " + strings.Join(addArgs, " "))
 		return nil
 	}
 	claude, err := exec.LookPath("claude")
 	if err != nil {
-		fmt.Println("\ncould not find the claude command; register the channel yourself:")
-		printChannelCommand(addArgs)
+		tui.Warn("Could not find the claude command - register it yourself with:")
+		tui.Detail("claude " + strings.Join(addArgs, " "))
 		return nil
 	}
 
@@ -211,69 +355,116 @@ func registerChannel(reader *bufio.Reader) error {
 	_ = exec.Command(claude, "mcp", "remove", "-s", "user", channel.ServerName).Run()
 
 	if out, err := exec.Command(claude, addArgs...).CombinedOutput(); err != nil {
-		fmt.Printf("\nclaude mcp add failed: %v\n%s\nregister the channel yourself:\n", err, strings.TrimSpace(string(out)))
-		printChannelCommand(addArgs)
+		tui.Warn("claude mcp add failed - register it yourself with:")
+		tui.Detail(strings.TrimSpace(string(out)))
+		tui.Detail("claude " + strings.Join(addArgs, " "))
 		return nil
 	}
-	fmt.Println("channel registered with Claude Code (user scope)")
+	tui.Done("Channel registered with Claude Code")
 	return nil
-}
-
-func printChannelCommand(args []string) {
-	fmt.Printf("  claude %s\n", strings.Join(args, " "))
 }
 
 // checkReturnPath proves Feishu can reach this machine while the user is
 // still here to fix it if it cannot. Sending is not evidence: the test card
 // already went out over a path that has nothing to do with this one.
-func checkReturnPath() {
-	fmt.Println("\nChecking that Feishu can reach this computer.")
+func checkReturnPath(how setupPath) {
+	tui.Blank()
+	tui.Step("Checking that Feishu can reach this computer")
+	tui.Blank()
 	if err := daemon.EnsureRunning(); err != nil {
-		fmt.Printf("could not start the Wirelark daemon: %v\n", err)
+		tui.Fail("Could not start the Wirelark daemon")
+		tui.Detail(err.Error())
 		return
 	}
-	fmt.Printf("Send any message to the Wirelark bot in Feishu now (waiting up to %s).\n", inboundCheckTimeout)
+	tui.Info("Send any message to the Wirelark bot in Feishu now.")
+	tui.Detail(fmt.Sprintf("waiting up to %s", inboundCheckTimeout))
 
 	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, inboundCheckTimeout)
 	if err != nil {
-		explainNoInbound(err)
+		explainNoInbound(how, err)
 		return
 	}
 	var ack ipc.Ack
 	if err := env.Into(&ack); err != nil {
-		explainNoInbound(err)
+		explainNoInbound(how, err)
 		return
 	}
 	if !ack.OK {
-		explainNoInbound(errors.New(ack.Err))
+		explainNoInbound(how, errors.New(ack.Err))
 		return
 	}
-	fmt.Println("message received - Feishu can reach this computer")
+	tui.Done("Message received - Feishu can reach this computer")
 }
 
-// explainNoInbound names what to switch on in the Feishu console, rather
-// than reporting that something did not work.
-func explainNoInbound(err error) {
-	fmt.Printf("no message reached Wirelark (%v)\n", err)
-	fmt.Println("In the Feishu developer console, check that the app has:")
-	fmt.Println("  - Event subscription set to long connection (not a webhook URL)")
-	fmt.Println("  - The event  im.message.receive_v1  subscribed")
-	fmt.Println("  - Card callbacks set to long connection, for the Allow and Deny buttons")
-	fmt.Println("  - The scopes  im:message  and  im:message:send_as_bot")
-	fmt.Println("Notifications already work. Re-run  wirelark init  once that is fixed.")
+// explainNoInbound names what to do about a return path that stayed
+// silent. A scanned app was asked for all of this during registration, so
+// the useful advice there is about approval and about the app being
+// released, not about a console the user never opened.
+func explainNoInbound(how setupPath, err error) {
+	tui.Warn("No message reached Wirelark")
+	tui.Detail(err.Error())
+	tui.Blank()
+	if how == pathScanned {
+		tui.Detail("The registration asked Feishu for everything Wirelark needs, so this\n" +
+			"usually means the app is waiting on someone:\n" +
+			"  - the permissions may still need your administrator's approval\n" +
+			"  - the app version may need releasing before subscriptions take effect")
+	} else {
+		tui.Detail("In the Feishu developer console, check that the app has:\n" +
+			"  - event subscription set to long connection, not a webhook URL\n" +
+			needsList())
+	}
+	tui.Blank()
+	tui.Info("Notifications already work. Re-run %s once that is fixed.", tui.Code("wirelark init"))
+}
+
+// needsList renders what Wirelark asks a Feishu app for, from the same
+// list the registration requests, so console instructions and the QR flow
+// can never drift apart.
+func needsList() string {
+	needs := register.Needs()
+	var b strings.Builder
+	for _, s := range needs.Scopes {
+		fmt.Fprintf(&b, "  - the scope  %s\n", s)
+	}
+	for _, e := range needs.Events {
+		fmt.Fprintf(&b, "  - the event  %s\n", e)
+	}
+	for _, c := range needs.Callbacks {
+		fmt.Fprintf(&b, "  - the callback  %s  , for the Allow and Deny buttons\n", c)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// whyNoCard explains a test card that would not send. It is the first
+// thing that talks to Feishu with the new credentials, so it is where a
+// half-finished app shows up.
+func whyNoCard(how setupPath) string {
+	if how == pathScanned {
+		return "The app was created, so the credentials are real - something is holding it back.\n" +
+			"Most often the permissions are waiting on an administrator's approval, or the\n" +
+			"app has not been released to you yet. Re-run wirelark init after that."
+	}
+	return "Check the app credentials, that the app has the bot capability, and that\n" +
+		"you are inside the app's availability scope."
 }
 
 // explainLaunch states the one thing the user has to do differently, and
 // why it is temporary. Wrapping it in a launcher would make a research
 // preview's restriction into a permanent part of the product.
 func explainLaunch() {
-	fmt.Println("\nOne more thing. Claude Code channels are a research preview, and a")
-	fmt.Println("channel that is not on Anthropic's allowlist has to be opted in per")
-	fmt.Println("session. Until Wirelark is on that list, start sessions you want to")
-	fmt.Println("continue from Feishu with:")
-	fmt.Println("\n  claude --dangerously-load-development-channels server:" + channel.ServerName)
-	fmt.Println("\nSessions started with a plain  claude  still send you notifications;")
-	fmt.Println("Feishu will show them as \"Notifications only\".")
+	tui.Blank()
+	tui.Step("One more thing")
+	tui.Blank()
+	tui.Info("Claude Code channels are a research preview, and a channel that is not on")
+	tui.Info("Anthropic's allowlist has to be opted in per session. Until Wirelark is on")
+	tui.Info("that list, start sessions you want to continue from Feishu with:")
+	tui.Blank()
+	tui.Detail("claude --dangerously-load-development-channels server:" + channel.ServerName)
+	tui.Blank()
+	tui.Info("Sessions started with a plain %s still send you notifications;", tui.Code("claude"))
+	tui.Info("Feishu will show them as \"Notifications only\".")
+	tui.Blank()
 }
 
 // executablePath returns the absolute path of this binary.
@@ -296,28 +487,4 @@ func executableCommand() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%q send", exe), nil
-}
-
-func prompt(reader *bufio.Reader, label string) string {
-	fmt.Printf("%s: ", label)
-	line, _ := reader.ReadString('\n')
-	return strings.TrimSpace(line)
-}
-
-// promptChoice asks for a numbered choice and returns the chosen value.
-func promptChoice(reader *bufio.Reader, label string, options []string) string {
-	fmt.Printf("%s: ", label)
-	line, _ := reader.ReadString('\n')
-	line = strings.TrimSpace(line)
-	if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(options) {
-		return options[n-1]
-	}
-	return options[0]
-}
-
-func confirm(reader *bufio.Reader, question string) bool {
-	fmt.Print(question)
-	line, _ := reader.ReadString('\n')
-	line = strings.ToLower(strings.TrimSpace(line))
-	return line == "" || line == "y" || line == "yes"
 }

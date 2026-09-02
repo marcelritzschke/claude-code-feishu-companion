@@ -70,6 +70,7 @@ func NewInbound(cfg *config.Config) *Inbound {
 	handler.InitConfig(larkevent.WithLogger(discardLogger{}), larkevent.WithLogLevel(larkcore.LogLevelError))
 	in.ws = larkws.NewClient(cfg.AppID, cfg.AppSecret,
 		larkws.WithEventHandler(handler),
+		larkws.WithDomain(cfg.OpenBaseURL()),
 		larkws.WithAutoReconnect(true),
 		larkws.WithLogLevel(larkcore.LogLevelError),
 		larkws.WithLogger(discardLogger{}))

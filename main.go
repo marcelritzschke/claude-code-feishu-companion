@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -28,6 +29,7 @@ import (
 	"github.com/marcelritzschke/wirelark/internal/config"
 	"github.com/marcelritzschke/wirelark/internal/daemon"
 	"github.com/marcelritzschke/wirelark/internal/ipc"
+	"github.com/marcelritzschke/wirelark/internal/tui"
 )
 
 func main() {
@@ -47,6 +49,13 @@ func main() {
 		}
 	case "init":
 		if err := runInit(); err != nil {
+			// Quitting a setup question is a decision, not a fault. It
+			// gets an exit code so a script can tell, but not the shape
+			// of a crash report.
+			if errors.Is(err, tui.ErrAborted) {
+				fmt.Fprintln(os.Stderr, "setup cancelled")
+				os.Exit(130)
+			}
 			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -61,7 +70,7 @@ func main() {
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  wirelark init               interactive setup: credentials, test card, hook registration
+  wirelark init               interactive setup: scan a QR code in Feishu, test card, hook registration
   wirelark send [--dry-run]   run one hook event from stdin (hook entrypoint)
   wirelark channel            serve one Claude Code session's channel (spawned by Claude Code)
   wirelark daemon [--stop|--status]

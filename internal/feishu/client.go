@@ -40,6 +40,9 @@ func New(cfg *config.Config) (*Client, error) {
 	return &Client{
 		cfg: cfg,
 		lc: lark.NewClient(cfg.AppID, cfg.AppSecret,
+			// An app exists in one Feishu deployment only, so the host is
+			// part of the credentials rather than a preference.
+			lark.WithOpenBaseUrl(cfg.OpenBaseURL()),
 			lark.WithTokenCache(cache),
 			lark.WithLogger(discardLogger{})),
 	}, nil

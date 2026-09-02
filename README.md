@@ -144,6 +144,32 @@ Wirelark is not a remote IDE. No terminal emulation, no file browsing, no
 diffs, no logs, no tool-by-tool transcript. When you need to inspect
 something, the right place is still Claude Code on your computer.
 
+## Single binary, zero dependencies
+
+Wirelark ships as one static binary. No runtime to install, no
+dependency tree, no service manager:
+
+- No runtime, no service manager, no container. A handful of Go deps,
+  fetched by `go build`.
+- Nothing setup needs is paid for by anything else. `wirelark send` runs
+  on every hook event and links no terminal-UI machinery it would have to
+  initialise: it costs about two milliseconds and writes nothing.
+- Same binary on macOS, Linux, Windows. Cross-compile is one `GOOS=`
+  away.
+- `wirelark send` starts in tens of milliseconds per hook event. Fast
+  enough that the runtime is never the slow part.
+- The daemon auto-starts on first use. No systemd unit, no Docker, no
+  supervisor.
+
+```sh
+go build -o wirelark .
+./wirelark init
+```
+
+That is the whole install. The same binary delivers notifications, runs
+the MCP channel per session, owns the Feishu connection, and answers card
+callbacks. One process tree, no hidden companions.
+
 ## Setup
 
 Requirements: [mise](https://mise.jdx.dev/) (or any Go >= 1.27).
@@ -151,16 +177,57 @@ Requirements: [mise](https://mise.jdx.dev/) (or any Go >= 1.27).
 ```sh
 mise install                # installs the pinned Go toolchain
 mise exec -- go build -o wirelark .
-./wirelark init   # interactive: credentials, behavior settings, test card, hooks, channel
+./wirelark init   # interactive: scan a QR code, behavior settings, test card, hooks, channel
 ```
 
-`init` asks for the Feishu app_id/app_secret of a self-built app, asks four
-behavior questions, delivers a real test card before saving anything, then
-registers the hooks and the channel, starts the daemon, and checks that
-Feishu can reach back to your computer while you are still there to fix it
-if it cannot.
+`init` opens straight into a QR code - there is no question to answer
+first, because almost nobody arrives holding a Feishu app:
 
-The Feishu app needs the bot capability, `im:message:send_as_bot` (plus
+```text
+  Wirelark  Claude Code, on your phone
+
+  Connect Wirelark to Feishu
+
+  ████████████████████████████████████████ …
+  ████████████████████████████████████████ …
+  ████ ▄▄▄▄▄ ██▀▀▀▄▄▄▄█▀█▄ █▀▄ ▄▀▄ ▄▄█ ▄ █ …
+  ████ █   █ █▄█▄█▀█▀▄  ▄▀█▄▄█▀▄██▀██▀██▄█ …
+  ████ █▄▄▄█ ██▄▄▄▄▀▄▄▄  ▄ ▄▄█ ███ ▀ ▄▄▄   …
+  ████▄▄▄▄▄▄▄█ ▀▄█▄▀▄▀ █ ▀▄▀ ▀ ▀ █▄█ █▄█ █ …
+                  …
+
+  Scan with Feishu, then approve what Wirelark asks for.
+  The account you scan with becomes this computer's Wirelark owner.
+
+  Can't scan? https://open.feishu.cn/page/launcher?…
+
+  ⠹ Waiting for the scan · 9m41s left
+  e use an existing Feishu app     ctrl+c cancel
+```
+
+Scanning opens Feishu's own app-registration page, pre-filled with the
+permissions and subscriptions below. Approve it and Feishu creates the app,
+hands Wirelark the credentials, and says who scanned - so there is no
+developer console to open, no App Secret to copy, and no email to type. The
+account that scanned becomes this computer's Wirelark owner: the only one
+the bot messages, and the only one it accepts messages from.
+
+This is Feishu's device-authorization flow (RFC 8628) through the official
+Go SDK. Wirelark never sees the approval, only its result.
+
+After that `init` asks four behavior questions, delivers a real test card
+before saving anything, then registers the hooks and the channel, starts
+the daemon, and checks that Feishu can reach back to your computer while
+you are still there to fix it if it cannot.
+
+### Using an app someone else created
+
+Press `e` while the code is on screen - or take the offer `init` makes if
+the scan does not work out - and setup asks for an App ID, an App Secret,
+which Feishu the app lives on, and who you are. This is the path for a
+managed company environment where an administrator pre-creates the app.
+
+That app needs the bot capability, `im:message:send_as_bot` (plus
 `contact:user.id:readonly` if you resolve your open_id by email), and - for
 continuation - `im:message` and event subscription in **long connection**
 mode with `im.message.receive_v1` subscribed.
@@ -172,12 +239,18 @@ and the **`card.action.trigger`** event subscribed alongside
 subscription does not take effect. Without these, buttons report that the
 callback is not configured and you use the typed replies instead.
 
+The QR flow asks Feishu for all of this during registration, which is the
+point of it. If your administrator has to approve the permissions first,
+the app is created but stays quiet until they do - `init` says so when the
+test card will not send.
+
 Config lives at `~/.config/wirelark/config.toml` (0600):
 
 ```toml
 app_id = "cli_..."
 app_secret = "..."
-open_id = "ou_..."
+open_id = "ou_..."           # the account that scanned; Wirelark's owner
+brand = "feishu"             # open.feishu.cn; "lark" for open.larksuite.com
 
 # what to notify about
 notify = "important"            # attention, failures, completion

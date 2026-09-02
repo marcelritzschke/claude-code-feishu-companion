@@ -144,6 +144,42 @@ Wirelark is not a remote IDE. No terminal emulation, no file browsing, no
 diffs, no logs, no tool-by-tool transcript. When you need to inspect
 something, the right place is still Claude Code on your computer.
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/wirelark/main/install.sh | sh
+```
+
+This detects your OS and architecture (macOS and Linux, amd64 and arm64),
+downloads the matching binary from the
+[latest release](https://github.com/marcelritzschke/wirelark/releases),
+verifies it against the release's `checksums.txt`, and installs it to
+`~/.local/bin`. Set `INSTALL_DIR` to install elsewhere, or `VERSION` to
+install a specific tag instead of the latest:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/wirelark/main/install.sh | INSTALL_DIR=/usr/local/bin sh
+```
+
+Then:
+
+```sh
+wirelark init
+```
+
+Read the script before piping it to `sh` if you'd rather not take that on
+faith - `install.sh` at the repo root is exactly what the command above
+runs.
+
+On Windows, or to install without running a script, download the archive
+for your platform from the
+[releases page](https://github.com/marcelritzschke/wirelark/releases),
+verify it against that release's `checksums.txt`, and extract the
+`wirelark` (or `wirelark.exe`) binary onto your `PATH`. `go install
+github.com/marcelritzschke/wirelark@latest` also works if you have a Go
+toolchain and prefer that over a release binary; see
+[Setup](#setup) below to build from a local checkout instead.
+
 ## Single binary, zero dependencies
 
 Wirelark ships as one static binary. No runtime to install, no

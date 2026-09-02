@@ -61,6 +61,8 @@ func main() {
 		}
 	case "-h", "--help", "help":
 		usage()
+	case "-v", "--version", "version":
+		printVersion()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
 		usage()
@@ -75,6 +77,7 @@ func usage() {
   wirelark channel            serve one Claude Code session's channel (spawned by Claude Code)
   wirelark daemon [--stop|--status]
                               run the bridge (started automatically when needed)
+  wirelark version            print the version
 `)
 }
 

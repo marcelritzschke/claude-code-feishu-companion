@@ -41,7 +41,7 @@ func (o Options) buttons() []Button {
 		return nil
 	}
 	return []Button{{
-		Label:  "Continue this session",
+		Label:  "Continue",
 		Style:  stylePrimary,
 		Action: Action{Kind: ActionSelect, Session: o.ContinueSession},
 	}}
@@ -180,6 +180,15 @@ func contextWithDuration(p *hook.Payload, turn *transcript.Turn) string {
 		return d
 	}
 	return ctx + " · " + d
+}
+
+// elapsedSuffix is the " · 8m" a session-card title carries: how long the
+// turn has been running, next to the state it is in.
+func elapsedSuffix(turn *transcript.Turn) string {
+	if turn == nil || turn.Start.IsZero() {
+		return ""
+	}
+	return " · " + formatDuration(time.Since(turn.Start))
 }
 
 func formatDuration(d time.Duration) string {

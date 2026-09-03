@@ -35,7 +35,7 @@ func (d *Daemon) onPermissionRequest(ctx context.Context, link session.Channel, 
 	// decision is one card however the two events are ordered.
 	d.mu.Lock()
 	standing, hadCard := d.bySession[s.ID]
-	if hadCard && !standing.settled && standing.messageID != "" {
+	if hadCard && standing.kind == promptPermission && !standing.settled && standing.messageID != "" {
 		standing.req = req
 		standing.relayed = true
 		d.byRequest[req.RequestID] = standing
@@ -45,7 +45,7 @@ func (d *Daemon) onPermissionRequest(ctx context.Context, link session.Channel, 
 		debuglog.Printf("permission %s relayed by rewriting message %s", req.RequestID, messageID)
 		return
 	}
-	p := &prompt{sessionID: s.ID, req: req, relayed: true}
+	p := &prompt{sessionID: s.ID, kind: promptPermission, req: req, relayed: true}
 	d.byRequest[req.RequestID] = p
 	d.bySession[s.ID] = p
 	d.mu.Unlock()
@@ -57,16 +57,23 @@ func (d *Daemon) onPermissionRequest(ctx context.Context, link session.Channel, 
 	debuglog.Printf("permission %s relayed for %s", req.RequestID, s.Describe())
 }
 
-// recordHookPrompt remembers the card a hook-driven permission notification
-// became, so a relay arriving afterwards can rewrite it rather than add a
-// second card for the same decision.
+// recordHookPrompt remembers the card a hook-driven attention notification
+// became - a permission prompt or a question - so it can be settled once
+// the session moves on, and so a permission relay arriving afterwards can
+// rewrite it rather than add a second card for the same decision.
 func (d *Daemon) recordHookPrompt(sessionID, hookEvent, messageID string) {
-	if hookEvent != hook.EventPermissionRequest {
+	var kind string
+	switch hookEvent {
+	case hook.EventPermissionRequest:
+		kind = promptPermission
+	case hook.EventPreToolUse:
+		kind = promptQuestion
+	default:
 		return
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.bySession[sessionID] = &prompt{sessionID: sessionID, messageID: messageID}
+	d.bySession[sessionID] = &prompt{sessionID: sessionID, kind: kind, messageID: messageID}
 }
 
 // answerPermission carries the user's tap back to the session and settles
@@ -101,20 +108,24 @@ func (d *Daemon) answerPermission(ctx context.Context, act notify.Action, messag
 	}
 	debuglog.Printf("permission %s answered %s", act.Request, act.Verdict)
 
-	s, _ := d.reg.Get(p.sessionID)
-	if messageID != "" {
-		card, err := notify.PermissionAnsweredCard(s, p.req, act.Verdict)
-		d.updateCard(ctx, messageID, card, err)
-	}
 	if act.Verdict == notify.VerdictAllow {
 		d.reg.MarkWorking(p.sessionID)
 	}
+	// The answered card leaves the conversation; its outcome moves onto the
+	// session card. Only when the recall is refused does it settle in place.
+	if messageID != "" && !d.deleteCard(ctx, messageID) {
+		s, _ := d.reg.Get(p.sessionID)
+		card, err := notify.PermissionAnsweredCard(s, p.req, act.Verdict)
+		d.updateCard(ctx, messageID, card, err)
+	}
+	d.noteOnSessionCard(ctx, p.sessionID, notify.VerdictNote(p.req, act.Verdict))
 }
 
-// settleStandingPrompt closes a permission card whose decision was made in
-// the terminal instead. Claude Code says nothing when the local dialog
-// wins, so the proof is the session getting on with its work - and until
-// then the card would sit there asking for an answer that already exists.
+// settleStandingPrompt closes an attention card whose moment has passed: a
+// permission decided in the terminal, or a question answered there. Claude
+// Code says nothing when the local dialog wins, so the proof is the
+// session getting on with its work - and until then the card would sit
+// there asking for an answer that already exists.
 func (d *Daemon) settleStandingPrompt(ctx context.Context, sessionID string) {
 	d.mu.Lock()
 	p, ok := d.bySession[sessionID]
@@ -134,14 +145,31 @@ func (d *Daemon) settleStandingPrompt(ctx context.Context, sessionID string) {
 		return
 	}
 	p.settled = true
-	messageID, req, relayed := p.messageID, p.req, p.relayed
+	messageID, req, kind := p.messageID, p.req, p.kind
 	d.mu.Unlock()
 
-	if messageID == "" || !relayed {
-		return // nothing standing that offers an answer it can no longer take
+	if messageID == "" {
+		return // nothing standing to settle
+	}
+	// The prompt's moment has passed, so its card leaves the conversation
+	// and the session card records that it was handled at the terminal.
+	if d.deleteCard(ctx, messageID) {
+		note := "✓ Decided in Claude Code"
+		if kind == promptQuestion {
+			note = "✓ Answered in Claude Code"
+		}
+		d.noteOnSessionCard(ctx, sessionID, note)
+		debuglog.Printf("%s prompt for session %s recalled: answered in Claude Code", kind, sessionID)
+		return
 	}
 	s, _ := d.reg.Get(sessionID)
-	card, err := notify.PermissionHandledLocallyCard(s, req)
+	var card string
+	var err error
+	if kind == promptQuestion {
+		card, err = notify.QuestionAnsweredCard(s)
+	} else {
+		card, err = notify.PermissionHandledLocallyCard(s, req)
+	}
 	d.updateCard(ctx, messageID, card, err)
-	debuglog.Printf("permission %s settled: answered in Claude Code", req.RequestID)
+	debuglog.Printf("%s prompt for session %s settled: answered in Claude Code", kind, sessionID)
 }

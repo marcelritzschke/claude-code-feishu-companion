@@ -290,18 +290,17 @@ func TestRegisterReplacesRelocatedInstall(t *testing.T) {
 	}
 }
 
-// PostToolUse fires on every tool call. Registering it at the default
-// notification level would spawn a Claude Companion process per call with
-// nothing to say, so it is only registered when progress updates are
-// switched on.
-func TestRegisterPostToolUseOnlyWithProgress(t *testing.T) {
+// PostToolUse fires on every tool call. It feeds the live session card and
+// the progress checkpoints; with both uses off, registering it would spawn
+// a Claude Companion process per call with nothing to say.
+func TestRegisterPostToolUseNeedsAUse(t *testing.T) {
 	p := writeFixture(t, "{}")
-	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: false, Remote: true}); err != nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: false, Remote: false}); err != nil {
 		t.Fatal(err)
 	}
 	hooks := hooksOf(t, load(t, p))
 	if _, has := hooks["PostToolUse"]; has {
-		t.Error("PostToolUse must not be registered without progress notifications")
+		t.Error("PostToolUse must not be registered with nothing to feed")
 	}
 	for _, event := range []string{"PermissionRequest", "PreToolUse", "Stop", "StopFailure"} {
 		if _, has := hooks[event]; !has {
@@ -310,16 +309,28 @@ func TestRegisterPostToolUseOnlyWithProgress(t *testing.T) {
 	}
 }
 
+// The session card is made of tool activity, so remote continuation alone
+// is enough to earn the PostToolUse hook.
+func TestRegisterPostToolUseWithRemote(t *testing.T) {
+	p := writeFixture(t, "{}")
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: false, Remote: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := hooksOf(t, load(t, p))["PostToolUse"]; !has {
+		t.Error("PostToolUse must be registered when remote continuation is on")
+	}
+}
+
 func TestRegisterTurningProgressOffRemovesPostToolUse(t *testing.T) {
 	p := writeFixture(t, "{}")
 	cmd := "/bin/claude-companion send"
-	if _, err := Register(p, cmd, Settings{Progress: true, Remote: true}); err != nil {
+	if _, err := Register(p, cmd, Settings{Progress: true, Remote: false}); err != nil {
 		t.Fatal(err)
 	}
 	if _, has := hooksOf(t, load(t, p))["PostToolUse"]; !has {
 		t.Fatal("PostToolUse should be registered with progress on")
 	}
-	changed, err := Register(p, cmd, Settings{Progress: false, Remote: true})
+	changed, err := Register(p, cmd, Settings{Progress: false, Remote: false})
 	if err != nil {
 		t.Fatal(err)
 	}

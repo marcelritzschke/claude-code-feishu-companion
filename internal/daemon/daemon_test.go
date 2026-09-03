@@ -24,7 +24,10 @@ type recorder struct {
 	ids     []string
 	updates map[string][]string
 	texts   []string
-	next    int
+	deleted []string
+	// failDelete refuses recalls, the way Feishu does past its window.
+	failDelete bool
+	next       int
 }
 
 func newRecorder() *recorder { return &recorder{updates: map[string][]string{}} }
@@ -51,6 +54,16 @@ func (r *recorder) SendText(_ context.Context, text string) (string, error) {
 	defer r.mu.Unlock()
 	r.texts = append(r.texts, text)
 	return "om_text", nil
+}
+
+func (r *recorder) DeleteMessage(_ context.Context, messageID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failDelete {
+		return errors.New("message cannot be recalled")
+	}
+	r.deleted = append(r.deleted, messageID)
+	return nil
 }
 
 // titles returns the header title of every card sent, which is how a user
@@ -337,6 +350,29 @@ func TestVerdictReachesTheSessionAndSettlesTheCard(t *testing.T) {
 	if len(verdicts) != 1 || verdicts[0] != "abcde:allow" {
 		t.Fatalf("session received verdicts %v, want abcde:allow once", verdicts)
 	}
+	if len(rec.deleted) != 1 || rec.deleted[0] != cardID {
+		t.Errorf("deleted = %v, want the answered card recalled", rec.deleted)
+	}
+	if len(rec.updates[cardID]) != 0 {
+		t.Errorf("a recalled card was also rewritten: %v", rec.updates[cardID])
+	}
+}
+
+// When Feishu refuses the recall, the card must still stop asking: it
+// settles in place as the decision that was made.
+func TestUnrecallableAnsweredCardSettlesInPlace(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+	rec.failDelete = true
+	d.onPermissionRequest(context.Background(), l, mcp.PermissionRequest{
+		RequestID: "abcde", ToolName: "Bash", InputPreview: `{"command":"npm install"}`,
+	})
+	cardID := rec.ids[0]
+
+	value, _ := json.Marshal(notify.Action{
+		Kind: notify.ActionPermit, Session: "sess-1", Request: "abcde", Verdict: notify.VerdictAllow,
+	})
+	d.onCardAction(context.Background(), feishu.CardAction{Value: value, MessageID: cardID})
+
 	settled := rec.updates[cardID]
 	if len(settled) != 1 || !strings.Contains(settled[0], "Allowed") {
 		t.Errorf("the card settled to %v, want it to say the decision was made", settled)
@@ -365,8 +401,8 @@ func TestASecondTapChangesNothing(t *testing.T) {
 	if n != 1 {
 		t.Errorf("the session received %d verdicts, want 1", n)
 	}
-	if got := len(rec.updates[cardID]); got != 1 {
-		t.Errorf("the card was rewritten %d times, want once", got)
+	if got := len(rec.deleted); got != 1 {
+		t.Errorf("the card was recalled %d times, want once", got)
 	}
 }
 
@@ -382,9 +418,8 @@ func TestALocalAnswerSettlesTheStandingCard(t *testing.T) {
 
 	hookEvent(t, d, hook.EventStop, map[string]any{"last_assistant_message": "Installed."})
 
-	settled := rec.updates[cardID]
-	if len(settled) != 1 || !strings.Contains(settled[0], "handled in Claude Code") {
-		t.Errorf("the card settled to %v, want it to say the answer came from the terminal", settled)
+	if len(rec.deleted) != 1 || rec.deleted[0] != cardID {
+		t.Errorf("deleted = %v, want the locally answered card recalled", rec.deleted)
 	}
 }
 
@@ -631,8 +666,8 @@ func TestPermissionCanBeAnsweredByTyping(t *testing.T) {
 	if len(injected) != 0 {
 		t.Errorf("the answer was also pushed into the session as a message: %v", injected)
 	}
-	if settled := rec.updates[cardID]; len(settled) != 1 || !strings.Contains(settled[0], "Allowed") {
-		t.Errorf("the card settled to %v", settled)
+	if len(rec.deleted) != 1 || rec.deleted[0] != cardID {
+		t.Errorf("deleted = %v, want the answered card recalled", rec.deleted)
 	}
 }
 

@@ -56,6 +56,10 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		d.stopWatchRequest(ctx)
 		return
 	}
+	if number, ok := parseInterrupt(text); ok {
+		d.interruptRequest(ctx, number)
+		return
+	}
 	if id, ok := d.pickFromOverview(text); ok {
 		d.selectSession(ctx, id)
 		return
@@ -166,6 +170,8 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 		d.watchSession(ctx, act.Session)
 	case notify.ActionUnwatch:
 		d.closeWatch(ctx, act.Session, "You stopped watching this session.")
+	case notify.ActionInterrupt:
+		d.interruptSession(ctx, act.Session)
 	default:
 		debuglog.Printf("ignoring unknown card action %q", act.Kind)
 	}

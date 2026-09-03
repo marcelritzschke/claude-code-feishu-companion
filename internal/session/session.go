@@ -32,6 +32,19 @@ const (
 	Waiting State = "waiting"
 )
 
+// Wait names what a Waiting session is blocked on, so its card can say
+// "Waiting for permission" rather than a vaguer "Waiting for you".
+type Wait string
+
+const (
+	// WaitNothing: the session is not blocked on the user.
+	WaitNothing Wait = ""
+	// WaitPermission: a tool approval is open.
+	WaitPermission Wait = "permission"
+	// WaitAnswer: Claude asked the user a question.
+	WaitAnswer Wait = "answer"
+)
+
 // Remote is how far Claude Companion can trust that a session accepts remote input.
 type Remote string
 
@@ -70,9 +83,12 @@ type Session struct {
 	Dir string
 	// Title is the session's own name for its work, e.g. "Fix token
 	// refresh". Empty until Claude Code has titled it.
-	Title  string
-	State  State
-	Remote Remote
+	Title string
+	State State
+	// WaitingOn says what a Waiting session is blocked on. WaitNothing in
+	// every other state.
+	WaitingOn Wait
+	Remote    Remote
 	// Transcript is the path to the session's Claude Code transcript, as
 	// reported by its hooks. It is what a live view is read from, so a
 	// session without one cannot be watched - only heard from.
@@ -117,6 +133,32 @@ func (s *Session) Watchable() bool { return s.Transcript != "" }
 
 // Channel returns the live link, or nil when there is none.
 func (s *Session) Channel() Channel { return s.channel }
+
+// Interruptible reports whether Claude Companion may offer to interrupt this
+// session's current turn. It is a control, so it is only offered for a
+// session the user can also talk to, and only where this platform can
+// actually deliver the interrupt.
+func (s *Session) Interruptible() bool {
+	return s.Remote.Continuable() && s.PID > 0 && interruptSupported
+}
+
+// Interrupt stops the session's current turn, exactly as pressing Ctrl+C
+// in its terminal would: the work stops and the session returns to its
+// prompt. It never terminates Claude Code or the session itself.
+func (s *Session) Interrupt() error {
+	return interruptProcess(s.PID)
+}
+
+// waitFor maps a hook event to what it proves the session is blocked on.
+func waitFor(hookEvent string) Wait {
+	switch hookEvent {
+	case "PermissionRequest":
+		return WaitPermission
+	case "PreToolUse":
+		return WaitAnswer
+	}
+	return WaitNothing
+}
 
 // StateFor maps a Claude Code hook event to the state it proves the session
 // is in. Events that prove nothing (a tool call finishing, say) report

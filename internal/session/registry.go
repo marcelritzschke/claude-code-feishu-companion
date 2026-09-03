@@ -74,6 +74,10 @@ func (r *Registry) Observe(o Observation) Session {
 	}
 	if state, ok := StateFor(o.HookEvent); ok {
 		s.State = state
+		s.WaitingOn = WaitNothing
+		if state == Waiting {
+			s.WaitingOn = waitFor(o.HookEvent)
+		}
 	}
 	s.LastSeen = time.Now()
 	return *s
@@ -219,6 +223,19 @@ func (r *Registry) MarkWorking(id string) {
 	defer r.mu.Unlock()
 	if s, ok := r.sessions[id]; ok {
 		s.State = Working
+		s.WaitingOn = WaitNothing
+		s.LastSeen = time.Now()
+	}
+}
+
+// MarkIdle records that a session's turn was ended from here - an
+// interrupt - which fires no hook event that could say so.
+func (r *Registry) MarkIdle(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s, ok := r.sessions[id]; ok {
+		s.State = Idle
+		s.WaitingOn = WaitNothing
 		s.LastSeen = time.Now()
 	}
 }

@@ -77,10 +77,10 @@ func TestCompletionCardNormal(t *testing.T) {
 	}
 	m := decodeCard(t, card)
 	template, title, subtitle := headerOf(t, m)
-	if template != "green" || title != "✅ Claude finished" {
+	if template != "green" || title != "✅ Completed · 4m 18s" {
 		t.Errorf("header = %q / %q", template, title)
 	}
-	if subtitle != "Fix token refresh · payments-api · 4m 18s" {
+	if subtitle != "Fix token refresh · payments-api" {
 		t.Errorf("subtitle = %q", subtitle)
 	}
 	divs, note := sections(t, m)
@@ -171,7 +171,7 @@ func TestPermissionCard(t *testing.T) {
 	}
 	m := decodeCard(t, card)
 	template, title, subtitle := headerOf(t, m)
-	if template != "orange" || title != "⚠️ Claude needs your attention" {
+	if template != "orange" || title != "⚠️ Permission required" {
 		t.Errorf("header = %q / %q", template, title)
 	}
 	if subtitle != "Fix token refresh · payments-api" {
@@ -228,7 +228,7 @@ func TestQuestionCard(t *testing.T) {
 	}
 	m := decodeCard(t, card)
 	template, title, _ := headerOf(t, m)
-	if template != "blue" || title != "❓ Claude has a question" {
+	if template != "blue" || title != "❓ Claude needs your input" {
 		t.Errorf("header = %q / %q", template, title)
 	}
 	divs, note := sections(t, m)
@@ -244,7 +244,7 @@ func TestQuestionCard(t *testing.T) {
 	// A question is a terminal dialog: no channel can answer it, so the
 	// card must say where it has to be answered rather than imply Claude Companion
 	// could take the answer.
-	if note != "This interaction must currently be handled in Claude Code." {
+	if note != "This must currently be answered in Claude Code." {
 		t.Errorf("note = %q", note)
 	}
 }
@@ -262,7 +262,7 @@ func TestFailureCard(t *testing.T) {
 	}
 	m := decodeCard(t, card)
 	template, title, subtitle := headerOf(t, m)
-	if template != "red" || title != "❌ Claude couldn't finish" {
+	if template != "red" || title != "🔴 Failed · 4m 18s" {
 		t.Errorf("header = %q / %q", template, title)
 	}
 	if !strings.Contains(subtitle, "payments-api") {
@@ -272,8 +272,13 @@ func TestFailureCard(t *testing.T) {
 	if !strings.Contains(divs[0], "billing problem") {
 		t.Errorf("error text = %q", divs[0])
 	}
-	if !strings.Contains(divs[1], "**Last relevant error**") || !strings.Contains(divs[1], "credit balance too low") {
-		t.Errorf("details = %q", divs[1])
+	// sampleTurn's validation passed; the turn failed for an API reason, and
+	// the card shows both facts apart so neither is mistaken for the other.
+	if !strings.Contains(divs[1], "**Validation**") {
+		t.Errorf("validation = %q", divs[1])
+	}
+	if !strings.Contains(divs[2], "**Last relevant error**") || !strings.Contains(divs[2], "credit balance too low") {
+		t.Errorf("details = %q", divs[2])
 	}
 	if note != "Open Claude Code to continue." {
 		t.Errorf("note = %q", note)

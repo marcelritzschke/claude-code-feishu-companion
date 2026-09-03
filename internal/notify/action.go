@@ -28,6 +28,9 @@ const (
 	ActionWatch = "watch"
 	// ActionUnwatch closes it again.
 	ActionUnwatch = "unwatch"
+	// ActionInterrupt stops a session's current turn, returning the session
+	// to its prompt. It never terminates the session itself.
+	ActionInterrupt = "interrupt"
 )
 
 // Verdicts a permission button carries.

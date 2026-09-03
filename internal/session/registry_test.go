@@ -57,6 +57,36 @@ func TestUnknownEventLeavesStateAlone(t *testing.T) {
 	}
 }
 
+// What a waiting session is blocked on travels with the state, and it is
+// cleared the moment the session is anything but waiting.
+func TestWaitingOnFollowsTheBlockingEvent(t *testing.T) {
+	r := NewRegistry()
+	if s := r.Observe(Observation{ID: "s", PID: 100, HookEvent: "PermissionRequest"}); s.WaitingOn != WaitPermission {
+		t.Errorf("WaitingOn = %q, want %q", s.WaitingOn, WaitPermission)
+	}
+	if s := r.Observe(Observation{ID: "s", PID: 100, HookEvent: "PreToolUse"}); s.WaitingOn != WaitAnswer {
+		t.Errorf("WaitingOn = %q, want %q", s.WaitingOn, WaitAnswer)
+	}
+	if s := r.Observe(Observation{ID: "s", PID: 100, HookEvent: "PostToolUse"}); s.WaitingOn != WaitNothing {
+		t.Errorf("a working session is not blocked, got %q", s.WaitingOn)
+	}
+}
+
+// An interrupt fires no hook event, so the registry has to take the
+// daemon's word that the turn ended.
+func TestMarkIdleEndsTheTurn(t *testing.T) {
+	r := NewRegistry()
+	r.Observe(Observation{ID: "s", PID: 100, HookEvent: "PermissionRequest"})
+	r.MarkIdle("s")
+	s, ok := r.Get("s")
+	if !ok {
+		t.Fatal("marking idle must not remove the session")
+	}
+	if s.State != Idle || s.WaitingOn != WaitNothing {
+		t.Errorf("state = %q / %q, want idle and unblocked", s.State, s.WaitingOn)
+	}
+}
+
 // /clear gives the session a new id. It is still the same terminal, the
 // same work, and the same thing the user selected - so it must stay one
 // session, and stay selected.

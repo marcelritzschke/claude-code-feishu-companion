@@ -20,7 +20,7 @@ func step(tool string, input map[string]any, done, errored bool, errText string)
 	return transcript.Step{Tool: tool, Input: input, Done: done, Errored: errored, Error: errText}
 }
 
-func TestLiveCardAnswersWhatClaudeIsDoing(t *testing.T) {
+func TestSessionCardAnswersWhatClaudeIsDoing(t *testing.T) {
 	turn := &transcript.Turn{
 		Start:    time.Now().Add(-6*time.Minute - 12*time.Second),
 		Progress: "Found duplicate refresh validation.\nConsolidating the logic and checking the callers.",
@@ -30,24 +30,24 @@ func TestLiveCardAnswersWhatClaudeIsDoing(t *testing.T) {
 			step("Bash", map[string]any{"command": "go test ./..."}, false, false, ""),
 		},
 	}
-	card, err := LiveCard(watched(), turn, time.Now())
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"🟢 Claude is working",
-		"Fix token refresh · payments-api · 6m 12s",
+		"🟢 Working · 6m 12s",
+		"Fix token refresh · payments-api",
 		"Current progress",
 		"Found duplicate refresh validation.",
 		"Recent activity",
 		"✓ Read session.go",
 		"✓ Updated refresh.go",
 		"◌ Running go test ./...",
-		"Updated just now",
-		"Stop watching",
+		"Activity just now",
+		"Interrupt",
 	} {
 		if !strings.Contains(card, want) {
-			t.Errorf("live card is missing %q: %s", want, card)
+			t.Errorf("session card is missing %q: %s", want, card)
 		}
 	}
 }
@@ -85,7 +85,7 @@ func TestRecoveredFailureIsDistinguishedFromTheTaskFailing(t *testing.T) {
 				"dial tcp 127.0.0.1:5432: connection refused"),
 		},
 	}
-	card, err := LiveCard(watched(), turn, time.Now())
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestRecoveredFailureIsDistinguishedFromTheTaskFailing(t *testing.T) {
 	if !strings.Contains(card, "Claude carried on.") {
 		t.Errorf("a recovered failure must not read as the task failing: %s", card)
 	}
-	if strings.Contains(card, "❌") {
+	if strings.Contains(card, "Failed") {
 		t.Errorf("the turn has not failed; the card must not say it has: %s", card)
 	}
 }
@@ -112,31 +112,88 @@ func TestBookkeepingNeverBecomesActivity(t *testing.T) {
 	}
 }
 
-func TestLiveCardNeverShowsReasoning(t *testing.T) {
+func TestSessionCardNeverShowsReasoning(t *testing.T) {
 	// Progress comes from what Claude said out loud; a turn that has said
 	// nothing yet falls back to the action, never to anything internal.
 	turn := &transcript.Turn{
 		Start:      time.Now().Add(-time.Minute),
 		LatestTool: &transcript.ToolCall{Name: "Bash", Input: map[string]any{"command": "go test ./..."}},
 	}
-	card, err := LiveCard(watched(), turn, time.Now())
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(card, "Running go test ./...") {
-		t.Errorf("live card = %s", card)
+		t.Errorf("session card = %s", card)
 	}
 }
 
 func TestWaitingSessionLeadsWithAttention(t *testing.T) {
 	s := watched()
 	s.State = session.Waiting
-	card, err := LiveCard(s, &transcript.Turn{Start: time.Now()}, time.Now())
+	s.WaitingOn = session.WaitPermission
+	card, err := SessionCard(s, &transcript.Turn{Start: time.Now()}, SessionView{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(card, "⚠️ Claude needs you") {
+	if !strings.Contains(card, "🟠 Waiting for permission") {
 		t.Errorf("a blocked session must say so first: %s", card)
+	}
+	if !strings.Contains(card, "Claude needs approval before continuing.") {
+		t.Errorf("waiting card = %s", card)
+	}
+	if strings.Contains(card, "Interrupt") {
+		t.Errorf("the waiting card is state, not action: %s", card)
+	}
+
+	s.WaitingOn = session.WaitAnswer
+	card, err = SessionCard(s, &transcript.Turn{Start: time.Now()}, SessionView{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "🟠 Waiting for answer") {
+		t.Errorf("a question and a permission are different waits: %s", card)
+	}
+}
+
+func TestNotificationOnlySessionCardIsHonest(t *testing.T) {
+	s := watched()
+	s.Remote = session.Notifications
+	card, err := SessionCard(s, &transcript.Turn{Start: time.Now(), Progress: "Improving the README."},
+		SessionView{ActivityAt: time.Now().Add(-12 * time.Second), Interruptible: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"⚪ Working · Notifications only",
+		"Notifications only",
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("notification-only card is missing %q: %s", want, card)
+		}
+	}
+	if strings.Contains(card, "Interrupt") {
+		t.Errorf("a session that cannot be controlled must not offer control: %s", card)
+	}
+}
+
+func TestInterruptedCardPreservesTheSession(t *testing.T) {
+	turn := &transcript.Turn{Start: time.Now().Add(-3 * time.Minute), Progress: "Halfway through the callers."}
+	card, err := InterruptedSessionCard(watched(), turn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"⏹️ Interrupted",
+		"back at its prompt",
+		"Continue",
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("interrupted card is missing %q: %s", want, card)
+		}
+	}
+	if strings.Contains(card, "Failed") || strings.Contains(card, "Completed") {
+		t.Errorf("an interrupt is neither an outcome nor a failure: %s", card)
 	}
 }
 
@@ -151,11 +208,11 @@ func TestSettledWatchCardIsAnOutcomeAndAWayBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"✅ Claude finished",
+		"✅ Completed",
 		"Implemented token rotation and consolidated refresh validation.",
 		"Validation",
 		"✓ go test ./... passed",
-		"Continue session",
+		"Continue",
 	} {
 		if !strings.Contains(card, want) {
 			t.Errorf("settled card is missing %q: %s", want, card)
@@ -172,10 +229,10 @@ func TestStoppedWatchDoesNotReadAsAnOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(card, "Claude finished") {
+	if strings.Contains(card, "Claude finished") || strings.Contains(card, "Completed") {
 		t.Errorf("the turn is still running; the card must not claim it finished: %s", card)
 	}
-	if !strings.Contains(card, "Stopped watching") {
+	if !strings.Contains(card, "No longer live") {
 		t.Errorf("stopped card = %s", card)
 	}
 }
@@ -195,12 +252,18 @@ func TestLiveSignatureIgnoresTheClock(t *testing.T) {
 	}
 }
 
-func TestUpdatedNoteIsHonestAboutStaleness(t *testing.T) {
-	if got := updatedNote(time.Now()); got != "Updated just now" {
-		t.Errorf("updatedNote = %q", got)
+func TestActivityNoteIsHonestAboutStaleness(t *testing.T) {
+	if got := activityNote(time.Now()); got != "Activity just now" {
+		t.Errorf("activityNote = %q", got)
 	}
-	if got := updatedNote(time.Now().Add(-5 * time.Minute)); got != "Updated 5m ago" {
-		t.Errorf("updatedNote = %q", got)
+	if got := activityNote(time.Now().Add(-time.Minute)); got != "Activity 1m ago" {
+		t.Errorf("activityNote = %q", got)
+	}
+	if got := activityNote(time.Now().Add(-5 * time.Minute)); got != "No new activity for 5m" {
+		t.Errorf("activityNote = %q", got)
+	}
+	if got := activityNote(time.Time{}); got != "" {
+		t.Errorf("nothing observed means nothing claimed, got %q", got)
 	}
 }
 

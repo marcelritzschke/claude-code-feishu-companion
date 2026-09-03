@@ -54,11 +54,13 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 	debuglog.Printf("hook %s from %s", p.HookEventName, s.Describe())
 
 	// Any event that is not the prompt itself proves the session moved on,
-	// so a permission card still standing for it was answered elsewhere.
+	// so a permission or question card still standing for it was answered
+	// elsewhere.
 	if p.HookEventName != hook.EventPermissionRequest {
 		d.settleStandingPrompt(ctx, s.ID)
 		d.confirmDelivery(s.ID)
 	}
+	var settling bool
 	switch p.HookEventName {
 	case hook.EventSessionEnd:
 		// The session is over: it must leave the overview, it must not
@@ -71,7 +73,13 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		// The turn is over, so the live view is too - but its card is left
 		// standing, because the completion notification below settles that
 		// very message into the turn's outcome.
-		d.endWatch(s.ID)
+		settling = d.endWatch(s.ID) != nil
+	case hook.EventPostToolUse, hook.EventPermissionRequest, hook.EventPreToolUse:
+		// The first sign of real work in a turn opens the session's live
+		// card; afterwards each event nudges it, so a state that needs the
+		// user shows up without waiting for the next poll. Deliberately not
+		// on the prompt itself: a purely conversational turn earns no card.
+		d.ensureSessionCard(ctx, s)
 	}
 
 	(&deliver.Deliverer{
@@ -83,6 +91,28 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 			d.recordHookPrompt(s.ID, hookEvent, messageID)
 		},
 	}).Event(turn, d.cfg)
+
+	if settling {
+		d.pingOutcome(ctx, s, p, turn)
+	}
+}
+
+// pingOutcome is the push a settled session card cannot deliver. Rewriting
+// a card never notifies anyone, so a turn whose outcome was written onto
+// its own live card would otherwise end in silence - and the one thing this
+// product cannot afford is the user not hearing that Claude is done, or
+// stuck. Failures always push; a completion that did no reportable work
+// stays quiet, exactly as its notification would have.
+func (d *Daemon) pingOutcome(ctx context.Context, s session.Session, p *hook.Payload, turn *transcript.Turn) {
+	failed := p.HookEventName == hook.EventStopFailure || turn.Failed
+	if !failed && deliver.WithholdChatter(turn) == deliver.LiveCardOnly {
+		return
+	}
+	text := "✅ Completed · " + s.Describe()
+	if failed {
+		text = "🔴 Failed · " + s.Describe()
+	}
+	d.say(ctx, text)
 }
 
 // continueTarget is the session a card's [ Continue ] button should point

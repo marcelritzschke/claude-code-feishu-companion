@@ -99,6 +99,23 @@ func (c *Client) UpdateCard(ctx context.Context, messageID, cardJSON string) err
 	return nil
 }
 
+// DeleteMessage recalls a message the bot itself sent, which is how an
+// answered prompt leaves the conversation instead of settling in it.
+// Feishu only allows recalling recent messages; a card past that window
+// stays, and the caller falls back to rewriting it.
+func (c *Client) DeleteMessage(ctx context.Context, messageID string) error {
+	resp, err := c.lc.Im.Message.Delete(ctx, larkim.NewDeleteMessageReqBuilder().
+		MessageId(messageID).
+		Build())
+	if err != nil {
+		return fmt.Errorf("feishu request: %w", err)
+	}
+	if !resp.Success() {
+		return apiError(resp.CodeError, resp.RequestId())
+	}
+	return nil
+}
+
 // ResolveOpenID looks up a user's open_id by email (contact/v3 batch_get_id).
 // Used once during init; the resolved id is stored in the config.
 func (c *Client) ResolveOpenID(ctx context.Context, email string) (string, error) {

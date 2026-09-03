@@ -29,8 +29,9 @@ type Settings struct {
 	// built from.
 	Progress bool
 	// Remote adds the lifecycle events the Feishu session overview is made
-	// of. They say nothing on their own, so without remote continuation
-	// they would only spawn processes with nothing to report.
+	// of, and the tool activity the live session card is made of. They say
+	// nothing on their own, so without remote continuation they would only
+	// spawn processes with nothing to report.
 	Remote bool
 }
 
@@ -39,9 +40,10 @@ type Settings struct {
 //   - PreToolUse (AskUserQuestion): Claude is blocked on a question
 //   - Stop: the turn finished
 //   - StopFailure: the turn ended on an API error
-//   - PostToolUse: checkpoints for long-running progress updates, and only
-//     when those are switched on - at the default level it would spawn a
-//     Claude Companion process per tool call with nothing to say.
+//   - PostToolUse: the activity a live session card is made of, and the
+//     checkpoints for long-running progress updates. Without either use it
+//     would spawn a Claude Companion process per tool call with nothing to
+//     say, so it is only registered when one of them is on.
 //   - SessionStart, SessionEnd, UserPromptSubmit: which sessions exist and
 //     what each is doing, for the Feishu session overview.
 func registrationsFor(s Settings) []registration {
@@ -51,7 +53,7 @@ func registrationsFor(s Settings) []registration {
 		{event: "Stop"},
 		{event: "StopFailure"},
 	}
-	if s.Progress {
+	if s.Progress || s.Remote {
 		regs = append(regs, registration{event: "PostToolUse"})
 	}
 	if s.Remote {

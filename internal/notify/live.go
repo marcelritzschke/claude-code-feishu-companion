@@ -20,48 +20,120 @@ const (
 	detailCap   = 120 // the detail line under an item that went wrong
 )
 
-// activityItems is how many recent actions a live card lists. The spec's
-// "three to five meaningful items" with the low end preferred: the card
-// answers what Claude is broadly doing, not what it has emitted.
+// activityItems is how many recent actions a session card lists. The
+// spec's "three to five meaningful items" with the low end preferred: the
+// card answers what Claude is broadly doing, not what it has emitted.
 const activityItems = 4
 
-// LiveCard is the one card a watched session updates in place: what Claude
-// is broadly doing right now, and the few actions behind that.
-//
-// updated is when the card's content last actually changed, which is what
-// the "Updated ..." note reports. A card that has not changed is not
-// rewritten, so the note is the user's assurance that they are not looking
-// at a frozen view.
-func LiveCard(s session.Session, turn *transcript.Turn, updated time.Time) (string, error) {
-	template, title := "green", "🟢 Claude is working"
-	if s.State == session.Waiting {
-		template, title = "orange", "⚠️ Claude needs you"
-	}
+// SessionView is what the daemon knows about a session's live card that
+// neither the session nor its transcript can say: how fresh the observed
+// activity is, whether an interrupt could actually be delivered, and the
+// decisions whose own cards have been recalled.
+type SessionView struct {
+	// ActivityAt is when meaningful activity was last observed. It is what
+	// the card's liveness note reports, and it is deliberately separate
+	// from elapsed time: a turn can run long while its activity is recent,
+	// or run short and go quiet.
+	ActivityAt time.Time
+	// Interruptible puts [ Interrupt ] on the working card.
+	Interruptible bool
+	// Notes are one-line records of this turn's answered prompts. An
+	// answered permission card is recalled from the conversation, so the
+	// session card is where its outcome stays visible.
+	Notes []string
+}
 
+// SessionCard is the one live representation of a Claude Code session:
+// what it is doing, whether it is still active, and whether it needs the
+// user. It updates in place instead of producing a new message for every
+// state change, and it stays quiet - attention is pushed by the separate
+// permission and question cards, never by this one.
+func SessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
+	if s.State == session.Waiting {
+		return waitingSessionCard(s, turn, view)
+	}
+	return workingSessionCard(s, turn, view)
+}
+
+// workingSessionCard shows a turn in flight: the latest meaningful
+// progress, the few actions behind it, and how recently anything was
+// observed. A session Claude Companion cannot control says so on the card
+// itself rather than offering controls that would not work.
+func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
 	bodies := []string{"**Current progress**\n" + currentProgress(turn)}
 	if lines := activityLines(turn.Steps); len(lines) > 0 {
 		bodies = append(bodies, "**Recent activity**\n"+strings.Join(lines, "\n"))
 	}
+	bodies = append(bodies, notesBody(view.Notes))
 
-	buttons := []Button{{
-		Label:  "Stop watching",
-		Action: Action{Kind: ActionUnwatch, Session: s.ID},
-	}}
-	return card(template, title, liveContext(s, turn), bodies, buttons, updatedNote(updated))
+	template, title := "green", "🟢 Working"+elapsedSuffix(turn)
+	footer := activityNote(view.ActivityAt)
+	var buttons []Button
+	switch {
+	case !s.Remote.Continuable():
+		template, title = "grey", "⚪ Working · Notifications only"
+		footer = joinNotes(footer, "Notifications only — this session cannot be controlled from here.")
+	case view.Interruptible:
+		buttons = append(buttons, Button{
+			Label:  "Interrupt",
+			Action: Action{Kind: ActionInterrupt, Session: s.ID},
+		})
+	}
+	return card(template, title, s.Describe(), bodies, buttons, footer)
 }
 
-// SettledWatchCard is what a watched card becomes when there is nothing
+// waitingSessionCard is the session card while Claude is blocked on the
+// user. It states only the fact: the actionable notification is the
+// separate permission or question card. Session card = state, permission
+// and question cards = action.
+func waitingSessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
+	title, body := "🟠 Waiting for permission", "Claude needs approval before continuing."
+	if s.WaitingOn == session.WaitAnswer {
+		title, body = "🟠 Waiting for answer", "Claude needs your answer before continuing."
+	}
+	bodies := []string{body, "**Where it got to**\n" + currentProgress(turn), notesBody(view.Notes)}
+	return card("orange", title+elapsedSuffix(turn), s.Describe(), bodies, nil, "")
+}
+
+// notesBody renders the turn's decision records, empty when there are none.
+func notesBody(notes []string) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	return "**Decisions**\n" + strings.Join(notes, "\n")
+}
+
+// InterruptedSessionCard is what a session card settles into when the user
+// stops the turn from here. Interrupting stops the work and returns the
+// session to its prompt; it neither ends the session nor closes anything,
+// and the card must read that way.
+func InterruptedSessionCard(s session.Session, turn *transcript.Turn) (string, error) {
+	bodies := []string{
+		"You interrupted this turn. The session is back at its prompt in Claude Code.",
+		"**Where it got to**\n" + currentProgress(turn),
+	}
+	var buttons []Button
+	if s.Remote.Continuable() {
+		buttons = append(buttons, Button{
+			Label:  "Continue",
+			Style:  stylePrimary,
+			Action: Action{Kind: ActionSelect, Session: s.ID},
+		})
+	}
+	return card("grey", "⏹️ Interrupted"+elapsedSuffix(turn), s.Describe(), bodies, buttons, "")
+}
+
+// SettledWatchCard is what a session card becomes when there is nothing
 // live left to show: the turn's outcome, and the way back into the session.
 //
-// It is the fallback settle. A turn that ends while Claude Companion is watching
-// normally settles into the ordinary completion or failure notification,
-// which is the same card the user already knows from V1; this one covers
-// watching a session that is between turns, and watches that end for a
-// reason of their own.
+// It is the fallback settle. A turn that ends while its card is standing
+// normally settles into the ordinary completion or failure notification;
+// this one covers looking at a session that is between turns, and cards
+// put to rest for a reason of their own.
 func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
-	template, title := "green", "✅ Claude finished"
+	template, title := "green", "✅ Completed"
 	if turn.Failed {
-		template, title = "red", "❌ Claude couldn't finish"
+		template, title = "red", "🔴 Failed"
 	}
 
 	summary, _ := splitFinal(turn.Progress)
@@ -76,15 +148,15 @@ func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (st
 	var buttons []Button
 	if s.Remote.Continuable() {
 		buttons = append(buttons, Button{
-			Label:  "Continue session",
+			Label:  "Continue",
 			Style:  stylePrimary,
 			Action: Action{Kind: ActionSelect, Session: s.ID},
 		})
 	}
-	return card(template, title, liveContext(s, turn), bodies, buttons, note)
+	return card(template, title+elapsedSuffix(turn), s.Describe(), bodies, buttons, note)
 }
 
-// WatchStoppedCard leaves a watched card at rest while its turn is still
+// WatchStoppedCard leaves a session card at rest while its turn is still
 // running. It deliberately does not read as an outcome: the work has not
 // finished, and the ordinary completion notification is still to come.
 func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
@@ -92,7 +164,7 @@ func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (st
 	var buttons []Button
 	if s.Remote.Continuable() {
 		buttons = append(buttons, Button{
-			Label:  "Continue session",
+			Label:  "Continue",
 			Style:  stylePrimary,
 			Action: Action{Kind: ActionSelect, Session: s.ID},
 		})
@@ -100,26 +172,17 @@ func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (st
 	if note == "" {
 		note = "Claude is still working. Claude Companion will tell you when it finishes."
 	}
-	return card("grey", "⏸️ Stopped watching", liveContext(s, turn), bodies, buttons, note)
+	return card("grey", "⏸️ No longer live", s.Describe(), bodies, buttons, note)
 }
 
-// LiveSignature is everything on a live card that is worth rewriting the
-// card for: what Claude is doing and the activity behind it, without the
-// clock. Two renders with the same signature say the same thing, so the
-// card is left alone rather than rewritten every few seconds.
+// LiveSignature is everything on a session card that is worth rewriting
+// the card for: the state, what Claude is doing, and the activity behind
+// it, without the clock. Two renders with the same signature say the same
+// thing, so the card is left alone rather than rewritten every few seconds.
 func LiveSignature(s session.Session, turn *transcript.Turn) string {
 	const sep = "\x1f"
-	return string(s.State) + sep + currentProgress(turn) + sep +
+	return string(s.State) + sep + string(s.WaitingOn) + sep + currentProgress(turn) + sep +
 		strings.Join(activityLines(turn.Steps), sep)
-}
-
-// liveContext identifies the watched session and how long its turn has run.
-func liveContext(s session.Session, turn *transcript.Turn) string {
-	ctx := s.Describe()
-	if turn == nil || turn.Start.IsZero() {
-		return ctx
-	}
-	return ctx + " · " + formatDuration(time.Since(turn.Start))
 }
 
 // currentProgress is the short human-readable description of the work in
@@ -150,13 +213,42 @@ func trimProse(s string) string {
 	return truncateRunes(strings.Join(kept, " "), progressCap)
 }
 
-// updatedNote says how fresh the card is, which is the difference between a
-// quiet view and a stale one.
-func updatedNote(updated time.Time) string {
-	if updated.IsZero() || time.Since(updated) < 45*time.Second {
-		return "Updated just now"
+// Liveness thresholds. Elapsed time alone is not enough: "Working · 8m,
+// activity just now" and "Working · 8m, no new activity for 3m" are very
+// different states, and the note is what tells them apart.
+const (
+	// justNow is how recent activity reads as "just now".
+	justNow = 45 * time.Second
+	// quietAfter is when a lack of activity is called out as such. It is
+	// an honest observation, not an alarm: the card never fakes activity
+	// merely because its timer keeps increasing.
+	quietAfter = 2 * time.Minute
+)
+
+// activityNote says how recently meaningful activity was observed.
+func activityNote(at time.Time) string {
+	if at.IsZero() {
+		return ""
 	}
-	return "Updated " + formatDuration(time.Since(updated)) + " ago"
+	since := time.Since(at)
+	switch {
+	case since < justNow:
+		return "Activity just now"
+	case since < quietAfter:
+		return "Activity " + formatDuration(since) + " ago"
+	}
+	return "No new activity for " + formatDuration(since)
+}
+
+// joinNotes combines footer notes, skipping empty ones.
+func joinNotes(notes ...string) string {
+	kept := notes[:0]
+	for _, n := range notes {
+		if n != "" {
+			kept = append(kept, n)
+		}
+	}
+	return strings.Join(kept, " · ")
 }
 
 // group is a run of consecutive actions of one kind, which is how a live

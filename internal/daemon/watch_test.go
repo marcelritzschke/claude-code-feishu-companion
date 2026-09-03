@@ -58,7 +58,7 @@ func TestWatchOpensOneLiveCard(t *testing.T) {
 	d.startWatch(context.Background(), s)
 	defer d.closeWatch(context.Background(), "sess-1", "")
 
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "🟢 Claude is working" {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
 		t.Fatalf("cards = %v, want one live card", titles)
 	}
 	if !strings.Contains(rec.cards[0], "Reading the auth package.") {
@@ -123,7 +123,7 @@ func TestFinishedTurnSettlesTheWatchedCard(t *testing.T) {
 		t.Fatalf("the watched card was never settled")
 	}
 	final := updates[len(updates)-1]
-	if got := cardTitle(t, final); got != "✅ Claude finished" {
+	if got := cardTitle(t, final); !strings.HasPrefix(got, "✅ Completed") {
 		t.Errorf("settled card = %q, want the completion", got)
 	}
 	if strings.Contains(final, "Stop watching") {
@@ -167,7 +167,7 @@ func TestStopWatchingLeavesAnHonestCard(t *testing.T) {
 		t.Fatal("the card was left mid-flight")
 	}
 	final := updates[len(updates)-1]
-	if got := cardTitle(t, final); got != "⏸️ Stopped watching" {
+	if got := cardTitle(t, final); got != "⏸️ No longer live" {
 		t.Errorf("final card = %q", got)
 	}
 	if strings.Contains(final, "Claude finished") {
@@ -187,7 +187,7 @@ func TestWatchingAnIdleSessionShowsTheLastOutcome(t *testing.T) {
 	if d.watching("sess-1") {
 		t.Error("there is nothing running to watch")
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "✅ Claude finished" {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "✅ Completed") {
 		t.Errorf("cards = %v, want the last outcome", titles)
 	}
 }
@@ -254,7 +254,7 @@ func TestWatchButtonOpensTheLiveView(t *testing.T) {
 	if !d.watching("sess-1") {
 		t.Fatal("the Watch button did not open the live view")
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "🟢 Claude is working" {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
 		t.Errorf("cards = %v", titles)
 	}
 }
@@ -274,7 +274,7 @@ func TestStoppingTheDaemonPutsLiveCardsToRest(t *testing.T) {
 		t.Error("watches should be closed with the daemon")
 	}
 	updates := rec.updates[live]
-	if len(updates) == 0 || cardTitle(t, updates[len(updates)-1]) == "🟢 Claude is working" {
+	if len(updates) == 0 || strings.HasPrefix(cardTitle(t, updates[len(updates)-1]), "🟢 Working") {
 		t.Errorf("the live card was left running: %v", updates)
 	}
 }

@@ -171,12 +171,13 @@ func permissionSubject(req mcp.PermissionRequest) string {
 	return ""
 }
 
-// PermissionAnsweredCard is what a permission card becomes once it is
-// settled, so no prompt is ever left standing after it stopped mattering.
+// PermissionAnsweredCard is what a permission card becomes when it was
+// answered but could not be recalled, so no prompt is ever left standing
+// after it stopped mattering.
 func PermissionAnsweredCard(s session.Session, req mcp.PermissionRequest, verdict string) (string, error) {
-	template, title, said := "green", "✅ Allowed", "You allowed:"
+	template, title, said := "green", "✓ Allowed once", "You allowed:"
 	if verdict != VerdictAllow {
-		template, title, said = "grey", "🚫 Denied", "You denied:"
+		template, title, said = "grey", "✕ Denied", "You denied:"
 	}
 	bodies := []string{said, permissionSubject(req)}
 	footer := "Claude resumed working."
@@ -184,6 +185,22 @@ func PermissionAnsweredCard(s session.Session, req mcp.PermissionRequest, verdic
 		footer = "Claude was told no and continued from there."
 	}
 	return card(template, title, s.Describe(), bodies, nil, footer)
+}
+
+// noteCap bounds the subject on a session-card decision line.
+const noteCap = 60
+
+// VerdictNote is the one-line record of an answered permission, which is
+// what remains on the session card once the prompt's own card is recalled.
+func VerdictNote(req mcp.PermissionRequest, verdict string) string {
+	mark, word := "✓", "Allowed once"
+	if verdict != VerdictAllow {
+		mark, word = "✕", "Denied"
+	}
+	if subject := truncateRunes(flatten(permissionSubject(req)), noteCap); subject != "" {
+		return mark + " " + word + " · " + subject
+	}
+	return mark + " " + word
 }
 
 // PermissionHandledLocallyCard settles a permission card the user answered
@@ -199,7 +216,7 @@ func PermissionHandledLocallyCard(s session.Session, req mcp.PermissionRequest) 
 func stateMark(st session.State) string {
 	switch st {
 	case session.Waiting:
-		return "⚠️"
+		return "🟠"
 	case session.Working:
 		return "🟢"
 	default:

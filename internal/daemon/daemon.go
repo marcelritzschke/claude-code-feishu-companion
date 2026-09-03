@@ -53,6 +53,9 @@ type Daemon struct {
 	// pace is how often a watch looks and how often it may rewrite its
 	// card. Set once at construction and read-only thereafter.
 	pace pace
+	// interrupt delivers a turn interrupt to a session. It is a field so
+	// tests can interrupt without signalling a real process.
+	interrupt func(session.Session) error
 
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
@@ -68,6 +71,7 @@ type sender interface {
 	SendCard(ctx context.Context, cardJSON string) (string, error)
 	UpdateCard(ctx context.Context, messageID, cardJSON string) error
 	SendText(ctx context.Context, text string) (string, error)
+	DeleteMessage(ctx context.Context, messageID string) error
 }
 
 // inbound is the return path from Feishu.
@@ -77,16 +81,25 @@ type inbound interface {
 	Actions() <-chan feishu.CardAction
 }
 
-// prompt is one permission decision the user can still make.
+// prompt is one attention card still standing: a permission decision the
+// user can still make, or a question they were shown.
 type prompt struct {
 	sessionID string
 	messageID string
-	req       mcp.PermissionRequest
+	// kind says what the card asks for: promptPermission or promptQuestion.
+	kind string
+	req  mcp.PermissionRequest
 	// relayed is false while only the hook-driven card stands, which is
 	// what a session Claude Companion cannot reach ever gets.
 	relayed bool
 	settled bool
 }
+
+// prompt kinds.
+const (
+	promptPermission = "permission"
+	promptQuestion   = "question"
+)
 
 // delivery is a message pushed into a session, waiting for proof it landed.
 type delivery struct {
@@ -141,6 +154,7 @@ func New(cfg *config.Config, out sender, in inbound) *Daemon {
 		awaiting:  map[string]*delivery{},
 		watches:   map[string]*watch{},
 		pace:      defaultPace,
+		interrupt: func(s session.Session) error { return s.Interrupt() },
 		stop:      make(chan struct{}),
 	}
 }
@@ -363,6 +377,19 @@ func (d *Daemon) updateCard(ctx context.Context, messageID, cardJSON string, err
 	if err := d.out.UpdateCard(ctx, messageID, cardJSON); err != nil {
 		debuglog.Printf("update card: %v", err)
 	}
+}
+
+// deleteCard recalls a card the bot sent and reports whether it is gone.
+// Feishu refuses recalls past its window, so a false return is ordinary
+// and the caller settles the card in place instead.
+func (d *Daemon) deleteCard(ctx context.Context, messageID string) bool {
+	ctx, cancel := context.WithTimeout(ctx, sendTimeout)
+	defer cancel()
+	if err := d.out.DeleteMessage(ctx, messageID); err != nil {
+		debuglog.Printf("delete card %s: %v", messageID, err)
+		return false
+	}
+	return true
 }
 
 // say sends a short confirmation. These are answers to something the user

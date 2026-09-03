@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
@@ -15,7 +16,7 @@ func PermissionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 		"Claude is waiting for permission to continue.",
 		"**Requested action**\n" + describeAction(p.ToolName, p.ToolInput, p.Cwd),
 	}
-	return card("orange", "⚠️ Claude needs your attention", contextLine(p, turn), bodies,
+	return card("orange", "⚠️ Permission required", contextLine(p, turn), bodies,
 		opts.buttons(), "Open Claude Code to respond.")
 }
 
@@ -42,8 +43,15 @@ func QuestionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string,
 	// offers no way to answer one from a channel, and the session stays
 	// blocked until someone answers it where it was asked. Saying so is
 	// better than a button that would not work.
-	return card("blue", "❓ Claude has a question", contextLine(p, turn), bodies,
-		nil, "This interaction must currently be handled in Claude Code.")
+	return card("blue", "❓ Claude needs your input", contextLine(p, turn), bodies,
+		nil, "This must currently be answered in Claude Code.")
+}
+
+// QuestionAnsweredCard is what a question card becomes once the session
+// moves on: answered, and no longer reading as something to act on.
+func QuestionAnsweredCard(s session.Session) (string, error) {
+	return card("grey", "✓ Answered", s.Describe(),
+		[]string{"This question was answered in Claude Code."}, nil, "")
 }
 
 // CompletionCard reports a finished turn: what Claude accomplished, the
@@ -60,7 +68,7 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 		if v := validationSentence(turn.Tests); v != "" {
 			lines = append(lines, v)
 		}
-		return card("green", "✅ Claude finished", contextWithDuration(p, turn),
+		return card("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn),
 			[]string{strings.Join(lines, "\n")}, opts.buttons(), "")
 	}
 
@@ -72,18 +80,25 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 	if rest != "" {
 		bodies = append(bodies, "**Claude**\n\""+truncateRunes(rest, quoteCap)+"\"")
 	}
-	return card("green", "✅ Claude finished", contextWithDuration(p, turn), bodies, opts.buttons(), "")
+	return card("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn), bodies, opts.buttons(), "")
 }
 
 // FailureCard reports a turn that needs the user instead of one that
 // finished: either the API stopped the turn, or the work itself ended in a
-// failing state.
+// failing state. A failed turn is different from a temporary tool failure:
+// an intermediate command that failed and was recovered from never reaches
+// this card.
 func FailureCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, error) {
 	bodies := []string{failureText(p, turn)}
+	if turn != nil {
+		if v := validationLines(turn.Tests); len(v) > 0 {
+			bodies = append(bodies, "**Validation**\n"+strings.Join(v, "\n"))
+		}
+	}
 	if detail := lastRelevantError(p, turn); detail != "" {
 		bodies = append(bodies, "**Last relevant error**\n"+detail)
 	}
-	return card("red", "❌ Claude couldn't finish", contextWithDuration(p, turn), bodies,
+	return card("red", "🔴 Failed"+elapsedSuffix(turn), contextLine(p, turn), bodies,
 		opts.buttons(), "Open Claude Code to continue.")
 }
 

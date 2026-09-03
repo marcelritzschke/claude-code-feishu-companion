@@ -1,8 +1,8 @@
-**# Wirelark Product Experience Spec**
+**# Claude Companion Product Experience Spec**
 
 **## Product idea**
 
-Wirelark connects a local coding-agent session to Feishu.
+Claude Companion connects a local coding-agent session to Feishu.
 
 Its purpose is not to reproduce the terminal or coding-agent UI inside chat.
 
@@ -12,7 +12,7 @@ Its purpose is to answer two questions:
 
 2\. **\*\*What happened while I was away?\*\***
 
-Wirelark should feel quiet when nothing matters and immediate when something does.
+Claude Companion should feel quiet when nothing matters and immediate when something does.
 
 The core product principle is:
 
@@ -28,7 +28,7 @@ V1 makes it safe to leave Claude Code running without repeatedly checking the te
 
 The user starts work locally as usual.
 
-Wirelark sends a Feishu DM only when:
+Claude Companion sends a Feishu DM only when:
 
 \- Claude needs attention
 
@@ -40,7 +40,7 @@ Wirelark sends a Feishu DM only when:
 
 Routine tool calls, file reads, searches, and intermediate reasoning are not sent.
 
-The user should be able to understand every Wirelark notification in a few seconds from their phone.
+The user should be able to understand every Claude Companion notification in a few seconds from their phone.
 
 **---**
 
@@ -48,7 +48,7 @@ The user should be able to understand every Wirelark notification in a few secon
 
 **## 1. Quiet by default**
 
-Wirelark should not send messages such as:
+Claude Companion should not send messages such as:
 
 \> Claude read \`foo.go\`
 
@@ -58,7 +58,7 @@ Wirelark should not send messages such as:
 
 These events may matter internally, but they do not normally require the user's attention.
 
-A successful Wirelark session may generate only one Feishu message: the completion notification.
+A successful Claude Companion session may generate only one Feishu message: the completion notification.
 
 **---**
 
@@ -76,7 +76,7 @@ Good:
 
 Bad:
 
-\> **\*\*Wirelark notification\*\***
+\> **\*\*Claude Companion notification\*\***
 
 \> **\*\*Claude Code event\*\***
 
@@ -104,7 +104,7 @@ Do not show irrelevant technical identifiers.
 
 **## A. Attention required**
 
-This is the highest-priority Wirelark notification.
+This is the highest-priority Claude Companion notification.
 
 Use it whenever Claude cannot usefully continue without user input.
 
@@ -192,7 +192,7 @@ Do not surround it with agent reasoning.
 
 **## B. Completion**
 
-This will probably be the most common Wirelark message.
+This will probably be the most common Claude Companion message.
 
 It should tell the user:
 
@@ -246,7 +246,7 @@ It should tell the user:
 
 The first summary should ideally fit in roughly 2-4 lines.
 
-The final Claude response may be longer, but Wirelark should prefer a concise excerpt rather than rendering a huge response by default.
+The final Claude response may be longer, but Claude Companion should prefer a concise excerpt rather than rendering a huge response by default.
 
 **---**
 
@@ -260,7 +260,7 @@ The final Claude response may be longer, but Wirelark should prefer a concise ex
 
 │                                     │
 
-│ wirelark · 1m 42s                   │
+│ my-project · 1m 42s                 │
 
 │                                     │
 
@@ -300,7 +300,7 @@ A failure notification should distinguish between:
 
 \- the session stopped unexpectedly
 
-Do not present every failing shell command as a Wirelark failure; coding agents routinely encounter failed commands while solving problems.
+Do not present every failing shell command as a Claude Companion failure; coding agents routinely encounter failed commands while solving problems.
 
 Only notify when the overall agent turn ended unsuccessfully or requires intervention.
 
@@ -390,7 +390,7 @@ The information should describe meaningful progress, not individual internal act
 
 **# V1 message lifecycle**
 
-Wirelark should avoid creating chat clutter.
+Claude Companion should avoid creating chat clutter.
 
 Whenever possible, one Claude turn should correspond to one logical Feishu notification thread or message lifecycle.
 
@@ -544,7 +544,7 @@ A user should be comfortable doing this:
 
 \`\`\`
 
-If Wirelark makes the user feel they need to monitor Feishu continuously, V1 has failed.
+If Claude Companion makes the user feel they need to monitor Feishu continuously, V1 has failed.
 
 **---**
 
@@ -575,7 +575,7 @@ V3 — Live Companion
 
 V2 is the main product step.
 
-V3 adds convenience and visibility, but should not change the basic Wirelark mental model.
+V3 adds convenience and visibility, but should not change the basic Claude Companion mental model.
 
 **---**
 
@@ -587,7 +587,7 @@ The product should keep one simple architecture.
                          Feishu
                            │
                            ▼
-                    Wirelark daemon
+                    Claude Companion daemon
                          (Go)
                            │
               ┌────────────┼────────────┐
@@ -598,13 +598,13 @@ The product should keep one simple architecture.
           Claude A      Claude B      Claude C
 \`\`\`
 
-The Wirelark daemon is persistent and owns the Feishu connection.
+The Claude Companion daemon is persistent and owns the Feishu connection.
 
 Claude Code sessions remain normal user-owned sessions.
 
 Each running session may have a Claude Channel attached to it.
 
-The Channel talks only to the local Wirelark daemon.
+The Channel talks only to the local Claude Companion daemon.
 
 It should not independently connect to Feishu.
 
@@ -612,13 +612,13 @@ The exact local IPC mechanism and protocol are implementation choices.
 
 The product only requires that the relationship is local, private, reliable, and supports multiple simultaneous sessions.
 
-The existing V1 hooks continue to provide automatic discovery, lifecycle, attention, and completion information to Wirelark.
+The existing V1 hooks continue to provide automatic discovery, lifecycle, attention, and completion information to Claude Companion.
 
 Channels provide the supported path for sending interactive input into an already-running Claude session.
 
 The architecture must preserve this rule:
 
-\> **\*\*Wirelark connects to sessions. It does not own them.\*\***
+\> **\*\*Claude Companion connects to sessions. It does not own them.\*\***
 
 **---**
 
@@ -630,9 +630,9 @@ V2 lets the user continue an existing local Claude Code session from Feishu.
 
 The user still starts Claude Code normally on the computer.
 
-Wirelark should not create a new Claude session on their behalf.
+Claude Companion should not create a new Claude session on their behalf.
 
-Wirelark should not make Feishu the primary session.
+Claude Companion should not make Feishu the primary session.
 
 The experience should feel like temporarily reaching into the session that is already running on the user's computer.
 
@@ -642,25 +642,25 @@ The experience should feel like temporarily reaching into the session that is al
 
 V2 should not introduce another product-level setup flow.
 
-The user has already completed the V1 Wirelark setup.
+The user has already completed the V1 Claude Companion setup.
 
 Conceptually:
 
 \`\`\`text
-$ wirelark init
+$ claude-companion init
 
 ✓ Feishu connected
-✓ Wirelark running
+✓ Claude Companion running
 ✓ Claude integration installed
 \`\`\`
 
-After that, Wirelark should stay out of the way.
+After that, Claude Companion should stay out of the way.
 
-If current Claude Code limitations require a session to be started with Channels enabled before remote continuation is available, Wirelark may explain that requirement clearly.
+If current Claude Code limitations require a session to be started with Channels enabled before remote continuation is available, Claude Companion may explain that requirement clearly.
 
-That should be treated as a current platform limitation, not as Wirelark's long-term interaction model.
+That should be treated as a current platform limitation, not as Claude Companion's long-term interaction model.
 
-Do not make a special Wirelark launcher part of the permanent product experience.
+Do not make a special Claude Companion launcher part of the permanent product experience.
 
 **---**
 
@@ -676,11 +676,11 @@ $ cd ~/work/frontend
 $ claude
 \`\`\`
 
-Wirelark discovers those sessions automatically.
+Claude Companion discovers those sessions automatically.
 
 The user does not register a project manually.
 
-The user does not create a Wirelark workspace.
+The user does not create a Claude Companion workspace.
 
 The user does not migrate a conversation.
 
@@ -695,7 +695,7 @@ Feishu should provide a lightweight overview of the user's current local session
 Example:
 
 \`\`\`text
-Wirelark
+Claude Companion
 
 🟢 payments-api
    Fix token refresh
@@ -705,7 +705,7 @@ Wirelark
    Upgrade React
    Waiting for permission · Remote ready
 
-⚪ wirelark
+⚪ claude-companion
    Idle
    Notifications only
 \`\`\`
@@ -722,7 +722,7 @@ The overview should answer:
 
 Do not show implementation identifiers such as PIDs, raw session IDs, socket names, or plugin names.
 
-If a session is visible to Wirelark but cannot currently receive remote input, show that honestly.
+If a session is visible to Claude Companion but cannot currently receive remote input, show that honestly.
 
 Use user-facing language such as:
 
@@ -747,7 +747,7 @@ Which session do you want to continue?
 
 [ frontend · Upgrade React ]
 
-[ wirelark · Idle ]
+[ claude-companion · Idle ]
 \`\`\`
 
 After selection:
@@ -768,7 +768,7 @@ The important UX rule is:
 
 \> **\*\*The user should always know which local session they are talking to.\*\***
 
-Wirelark must never silently redirect a message to another active session.
+Claude Companion must never silently redirect a message to another active session.
 
 **---**
 
@@ -776,7 +776,7 @@ Wirelark must never silently redirect a message to another active session.
 
 The user sends normal language.
 
-No Wirelark command syntax should be required for ordinary continuation.
+No Claude Companion command syntax should be required for ordinary continuation.
 
 Example:
 
@@ -788,7 +788,7 @@ the mobile client depends on the current
 401 behavior.
 \`\`\`
 
-Wirelark sends that message to the selected existing Claude session through its Channel.
+Claude Companion sends that message to the selected existing Claude session through its Channel.
 
 The local terminal remains usable.
 
@@ -802,7 +802,7 @@ There is no session migration and no duplicate Claude instance.
 
 Remote input should not make local use feel unpredictable.
 
-If Claude is already in the middle of work, Wirelark may hold the remote message until it can be delivered naturally.
+If Claude is already in the middle of work, Claude Companion may hold the remote message until it can be delivered naturally.
 
 Example:
 
@@ -855,7 +855,7 @@ Use stricter token rotation
 Claude resumed working.
 \`\`\`
 
-If Wirelark cannot safely resolve a particular Claude interaction remotely, it should say so rather than pretending to support it.
+If Claude Companion cannot safely resolve a particular Claude interaction remotely, it should say so rather than pretending to support it.
 
 Example:
 
@@ -870,7 +870,7 @@ handled in Claude Code.
 
 **# V2 permissions**
 
-When Claude Channels support trusted remote permission handling for the current session, Wirelark may expose the decision in Feishu.
+When Claude Channels support trusted remote permission handling for the current session, Claude Companion may expose the decision in Feishu.
 
 Example:
 
@@ -913,7 +913,7 @@ V2 should keep the V1 notification philosophy.
 
 A turn started from Feishu does not need a live transcript.
 
-When Claude finishes, Wirelark sends the same kind of concise outcome the user already understands from V1.
+When Claude finishes, Claude Companion sends the same kind of concise outcome the user already understands from V1.
 
 Example:
 
@@ -933,7 +933,7 @@ so Claude did not change the API yet.
 
 V2 adds the ability to continue the session.
 
-It does not change Wirelark into a chat transcript viewer.
+It does not change Claude Companion into a chat transcript viewer.
 
 **---**
 
@@ -996,7 +996,7 @@ V2 succeeds when this feels natural:
 
 2. Walk away.
 
-3. Open Wirelark in Feishu.
+3. Open Claude Companion in Feishu.
 
 4. See the local sessions that are running.
 
@@ -1011,7 +1011,7 @@ V2 succeeds when this feels natural:
 9. Continue the same Claude session.
 \`\`\`
 
-The user should never feel that Wirelark created another copy of their work.
+The user should never feel that Claude Companion created another copy of their work.
 
 **---**
 
@@ -1094,7 +1094,7 @@ It should not answer:
 
 The same card updates in place.
 
-Wirelark should not send a new Feishu message for every action.
+Claude Companion should not send a new Feishu message for every action.
 
 Recent activity should remain short.
 
@@ -1232,7 +1232,7 @@ The session remains the same throughout.
 
 Watching is opt-in.
 
-Without Watch enabled, Wirelark behaves like V1/V2.
+Without Watch enabled, Claude Companion behaves like V1/V2.
 
 Even while watching, do not show:
 
@@ -1272,7 +1272,7 @@ If the user feels compelled to continuously monitor it, V3 has failed.
 \| Live session view | No | No | Yes |
 \| Condensed recent activity | No | No | Yes |
 \| Full Claude Code UI reproduction | No | No | No |
-\| Wirelark owns Claude sessions | No | No | No |
+\| Claude Companion owns Claude sessions | No | No | No |
 
 **---**
 
@@ -1280,7 +1280,7 @@ If the user feels compelled to continuously monitor it, V3 has failed.
 
 **## V1**
 
-**\*\*Wirelark tells you when your coding agent needs you.\*\***
+**\*\*Claude Companion tells you when your coding agent needs you.\*\***
 
 **---**
 
@@ -1308,7 +1308,7 @@ Before adding a post-V1 feature, ask:
 
 \> **\*\*Does this help the user understand, continue, or safely steer an existing local session while away?\*\***
 
-If not, it probably does not belong in Wirelark.
+If not, it probably does not belong in Claude Companion.
 
 The enduring product rule is:
 

@@ -1,15 +1,15 @@
 version: 2
 
-project_name: wirelark
+project_name: claude-code-feishu-companion
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: wirelark
+  - id: claude-companion
     main: .
-    binary: wirelark
+    binary: claude-companion
     env:
       - CGO_ENABLED=0
     goos:
@@ -26,7 +26,7 @@ builds:
       - -X main.date={{ .Date }}
 
 archives:
-  - id: wirelark
+  - id: claude-companion
     formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
@@ -52,5 +52,5 @@ changelog:
 release:
   github:
     owner: marcelritzschke
-    name: wirelark
+    name: claude-code-feishu-companion
   prerelease: auto

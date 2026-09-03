@@ -1,7 +1,7 @@
 // Package pathdisp renders filesystem paths for a human reading a phone.
 //
-// It treats "/" and "\" as separators regardless of the OS Wirelark runs
-// on: paths reach Wirelark from Claude Code payloads and transcripts, so
+// It treats "/" and "\" as separators regardless of the OS Claude Companion runs
+// on: paths reach Claude Companion from Claude Code payloads and transcripts, so
 // the separator is a property of the recorded path, not of this process.
 package pathdisp
 

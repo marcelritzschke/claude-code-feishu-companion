@@ -2,7 +2,7 @@ package notify
 
 import "encoding/json"
 
-// Action is what tapping a card button asks Wirelark to do. It travels in
+// Action is what tapping a card button asks Claude Companion to do. It travels in
 // the button's value and comes back on the card callback, so it is the one
 // piece of card JSON that is also parsed rather than only written.
 //

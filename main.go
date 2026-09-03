@@ -1,4 +1,4 @@
-// wirelark tells you when your coding agent needs you, and lets you
+// claude-companion tells you when your coding agent needs you, and lets you
 // continue the session it is telling you about.
 //
 // It forwards Claude Code attention, completion, and failure events to a
@@ -25,11 +25,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/marcelritzschke/wirelark/internal/channel"
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/daemon"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/tui"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/tui"
 )
 
 func main() {
@@ -72,12 +72,12 @@ func main() {
 
 func usage() {
 	fmt.Fprint(os.Stderr, `usage:
-  wirelark init               interactive setup: scan a QR code in Feishu, test card, hook registration
-  wirelark send [--dry-run]   run one hook event from stdin (hook entrypoint)
-  wirelark channel            serve one Claude Code session's channel (spawned by Claude Code)
-  wirelark daemon [--stop|--status]
+  claude-companion init               interactive setup: scan a QR code in Feishu, test card, hook registration
+  claude-companion send [--dry-run]   run one hook event from stdin (hook entrypoint)
+  claude-companion channel            serve one Claude Code session's channel (spawned by Claude Code)
+  claude-companion daemon [--stop|--status]
                               run the bridge (started automatically when needed)
-  wirelark version            print the version
+  claude-companion version            print the version
 `)
 }
 
@@ -90,7 +90,7 @@ func runChannel() int {
 
 	// Without a readable config there is no daemon to relay to and no way
 	// to know whether the user allowed remote approvals - so relay nothing
-	// and let the session run on as if Wirelark were not there.
+	// and let the session run on as if Claude Companion were not there.
 	relay := false
 	if cfg, err := config.Load(); err == nil {
 		relay = cfg.RemotePermissionsEnabled()
@@ -112,10 +112,10 @@ func runDaemon(args []string) error {
 			return daemon.Stop()
 		case "--status", "-status":
 			if ipc.Ping(daemonProbeTimeout) {
-				fmt.Println("wirelark daemon is running")
+				fmt.Println("claude-companion daemon is running")
 				return nil
 			}
-			fmt.Println("wirelark daemon is not running")
+			fmt.Println("claude-companion daemon is not running")
 			return nil
 		default:
 			return fmt.Errorf("unknown option %q", a)

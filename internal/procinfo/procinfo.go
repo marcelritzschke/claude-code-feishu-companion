@@ -1,10 +1,10 @@
 // Package procinfo answers one question about a running Claude Code
-// session: was it started in a way that lets Wirelark push messages into it?
+// session: was it started in a way that lets Claude Companion push messages into it?
 //
 // Claude Code never tells a channel server whether the session actually
 // registered it - unregistered channels have their events dropped in
 // silence. Reading the session's own command line is the only honest signal
-// available, and honesty is the point: a session Wirelark cannot reach must
+// available, and honesty is the point: a session Claude Companion cannot reach must
 // never be advertised as reachable.
 package procinfo
 
@@ -12,7 +12,7 @@ import "strings"
 
 // channelFlags are the two flags that opt a channel server into a session.
 // During the research preview a custom channel is not on the Anthropic
-// allowlist, so it is the development flag that carries Wirelark in practice.
+// allowlist, so it is the development flag that carries Claude Companion in practice.
 var channelFlags = map[string]bool{
 	"--channels": true,
 	"--dangerously-load-development-channels": true,
@@ -37,7 +37,7 @@ func ClassifyArgv(argv []string, server string) bool {
 	inEntries := false
 	for _, arg := range argv {
 		if flag, value, split := strings.Cut(arg, "="); split && channelFlags[flag] {
-			// The "--channels=server:wirelark" spelling carries exactly one
+			// The "--channels=server:claude-companion" spelling carries exactly one
 			// entry and does not open the list for the args that follow.
 			inEntries = false
 			if namesServer(value, server) {

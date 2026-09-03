@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/flock"
-	"github.com/marcelritzschke/wirelark/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/flock"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
 )
 
 // Entry is the progress-card bookkeeping for one session.
@@ -26,7 +26,7 @@ type Store struct {
 	dir string
 }
 
-// Open returns the store rooted at Wirelark's private directory.
+// Open returns the store rooted at Claude Companion's private directory.
 func Open() (*Store, error) {
 	dir, err := paths.Dir()
 	if err != nil {

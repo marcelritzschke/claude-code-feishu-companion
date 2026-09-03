@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // overviewWords are the things a user types when they want to see what is
@@ -18,7 +18,8 @@ import (
 // never swallow the instruction.
 var overviewWords = map[string]bool{
 	"sessions": true, "/sessions": true, "session": true,
-	"wirelark": true, "/wirelark": true, "status": true, "/status": true,
+	"claude-companion": true, "/claude-companion": true, "wirelark": true, "/wirelark": true,
+	"status": true, "/status": true,
 }
 
 // onMessage handles one thing the user said in Feishu. Almost everything
@@ -96,7 +97,7 @@ func (d *Daemon) pickFromOverview(text string) (string, bool) {
 // and tells them what became of it.
 func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text string) {
 	if !s.Remote.Continuable() {
-		d.say(ctx, s.Label()+" can only send you notifications. It was started without Wirelark enabled, "+
+		d.say(ctx, s.Label()+" can only send you notifications. It was started without Claude Companion enabled, "+
 			"so it cannot receive messages. Open Claude Code to continue it.")
 		return
 	}
@@ -108,7 +109,7 @@ func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text stri
 	if err := d.deliverTo(s.ID, text, map[string]string{"project": s.Label()}); err != nil {
 		debuglog.Printf("deliver to %s: %v", s.Describe(), err)
 		d.reg.Downgrade(s.ID)
-		d.say(ctx, "Wirelark could not reach "+s.Label()+". Your message was not delivered.")
+		d.say(ctx, "Claude Companion could not reach "+s.Label()+". Your message was not delivered.")
 		return
 	}
 	d.reg.MarkWorking(s.ID)
@@ -249,10 +250,10 @@ func (d *Daemon) stopWatchRequest(ctx context.Context) {
 }
 
 // deliveryProof is how long a message has to produce some sign of life from
-// its session before Wirelark stops believing it arrived.
+// its session before Claude Companion stops believing it arrived.
 //
 // It exists because Claude Code never acknowledges a channel event: a
-// session that did not register Wirelark drops every message in silence,
+// session that did not register Claude Companion drops every message in silence,
 // and the only honest way to find that out is that nothing happens.
 const deliveryProof = 90 * time.Second
 
@@ -291,7 +292,7 @@ func (d *Daemon) expireDeliveries(ctx context.Context) {
 			continue
 		}
 		d.reg.Downgrade(del.sessionID)
-		d.say(ctx, "Wirelark could not reach "+s.Label()+", and your message was not delivered.\n"+
+		d.say(ctx, "Claude Companion could not reach "+s.Label()+", and your message was not delivered.\n"+
 			"That session was most likely started without channels enabled.")
 		debuglog.Printf("delivery to %s went unanswered; downgraded", s.Describe())
 	}

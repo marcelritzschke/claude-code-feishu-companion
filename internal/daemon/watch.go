@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/session"
-	"github.com/marcelritzschke/wirelark/internal/state"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/state"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
-// Watching is the one thing in Wirelark that looks at a session
+// Watching is the one thing in Claude Companion that looks at a session
 // continuously, so its whole design is about not becoming a stream.
 //
 // The transcript is polled rather than pushed: watching then needs no extra
@@ -101,7 +101,7 @@ func (w *watch) turn(path string) *transcript.Turn {
 // place until the turn it is watching ends.
 func (d *Daemon) startWatch(ctx context.Context, s session.Session) {
 	if !s.Watchable() {
-		d.say(ctx, "Wirelark cannot see inside "+s.Label()+" yet. It becomes watchable as soon as that session runs its next turn.")
+		d.say(ctx, "Claude Companion cannot see inside "+s.Label()+" yet. It becomes watchable as soon as that session runs its next turn.")
 		return
 	}
 
@@ -217,9 +217,9 @@ func (d *Daemon) runWatch(ctx context.Context, w *watch) {
 		case !ok:
 			note = "This session has ended."
 		case s.State == session.Idle:
-			// The turn ended without a Stop event reaching Wirelark.
+			// The turn ended without a Stop event reaching Claude Companion.
 		case time.Since(w.started) > d.pace.max:
-			note = "Wirelark stopped watching after two hours. Ask again to look in."
+			note = "Claude Companion stopped watching after two hours. Ask again to look in."
 		default:
 			d.refreshWatch(ctx, w, s, false)
 			continue
@@ -337,6 +337,6 @@ func (d *Daemon) closeAllWatches(ctx context.Context) {
 	}
 	d.mu.Unlock()
 	for _, id := range ids {
-		d.closeWatch(ctx, id, "Wirelark stopped watching. Ask again to look in.")
+		d.closeWatch(ctx, id, "Claude Companion stopped watching. Ask again to look in.")
 	}
 }

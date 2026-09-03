@@ -1,5 +1,5 @@
 // Package hook decodes Claude Code hook payloads from stdin and classifies
-// them into the events Wirelark notifies on.
+// them into the events Claude Companion notifies on.
 package hook
 
 import (
@@ -8,10 +8,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
 )
 
-// Hook event names emitted by Claude Code that Wirelark acts on.
+// Hook event names emitted by Claude Code that Claude Companion acts on.
 const (
 	EventPermissionRequest = "PermissionRequest"
 	EventPreToolUse        = "PreToolUse"
@@ -36,7 +36,7 @@ const QuestionTool = "AskUserQuestion"
 // process. Claude Code payloads are a few KB at most.
 const maxPayloadBytes = 1 << 20
 
-// Payload is the subset of the Claude Code hook stdin JSON Wirelark uses.
+// Payload is the subset of the Claude Code hook stdin JSON Claude Companion uses.
 // Unknown fields are ignored so new Claude Code versions stay compatible.
 type Payload struct {
 	SessionID      string `json:"session_id"`
@@ -83,7 +83,7 @@ func (p *Payload) Subagent() bool {
 	return p.AgentID != ""
 }
 
-// Handled reports whether the event is one Wirelark acts on: a permission
+// Handled reports whether the event is one Claude Companion acts on: a permission
 // prompt, a question, a finished turn, a failed turn, a tool call (which
 // matters as a progress checkpoint), or a lifecycle event that says a
 // session started, ended, or was given something to do.

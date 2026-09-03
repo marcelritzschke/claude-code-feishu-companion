@@ -1,4 +1,4 @@
-// Package notify builds the Feishu cards for the notifications Wirelark
+// Package notify builds the Feishu cards for the notifications Claude Companion
 // sends: attention (permission, question), completion, failure, and
 // long-running progress. Every card leads with why the user is seeing it.
 package notify
@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // Detail is the user's completion-detail preference.
@@ -47,7 +47,7 @@ func (o Options) buttons() []Button {
 	}}
 }
 
-// Card schema (v1) - only the subset Wirelark needs, marshalled by hand so
+// Card schema (v1) - only the subset Claude Companion needs, marshalled by hand so
 // the JSON stays compact and predictable.
 
 type cardConfig struct {

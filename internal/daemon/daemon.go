@@ -1,4 +1,4 @@
-// Package daemon is the one persistent Wirelark role. It owns the Feishu
+// Package daemon is the one persistent Claude Companion role. It owns the Feishu
 // connection in both directions and everything that depends on knowing more
 // than one moment: which sessions exist, which one the user is talking to,
 // and which card on their phone still stands for something unanswered.
@@ -17,12 +17,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // snapshotEvery is how often the registry is written out, so a daemon that
@@ -83,7 +83,7 @@ type prompt struct {
 	messageID string
 	req       mcp.PermissionRequest
 	// relayed is false while only the hook-driven card stands, which is
-	// what a session Wirelark cannot reach ever gets.
+	// what a session Claude Companion cannot reach ever gets.
 	relayed bool
 	settled bool
 }
@@ -376,4 +376,4 @@ func (d *Daemon) say(ctx context.Context, text string) {
 }
 
 // errNoChannel reports that a session has no live link to push into.
-var errNoChannel = errors.New("this session has no live connection to Wirelark")
+var errNoChannel = errors.New("this session has no live connection to Claude Companion")

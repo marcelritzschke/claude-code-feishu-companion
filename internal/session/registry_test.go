@@ -151,7 +151,7 @@ func TestDetachIgnoresAReplacedChannel(t *testing.T) {
 // The overview leads with whatever needs the user.
 func TestListLeadsWithAttention(t *testing.T) {
 	r := NewRegistry()
-	r.Observe(Observation{ID: "idle", PID: 1, Dir: "/work/wirelark", HookEvent: "Stop"})
+	r.Observe(Observation{ID: "idle", PID: 1, Dir: "/work/claude-companion", HookEvent: "Stop"})
 	r.Observe(Observation{ID: "busy", PID: 2, Dir: "/work/payments-api", HookEvent: "UserPromptSubmit"})
 	r.Observe(Observation{ID: "blocked", PID: 3, Dir: "/work/frontend", HookEvent: "PermissionRequest"})
 
@@ -180,7 +180,7 @@ func TestDowngradeStopsClaimingReachable(t *testing.T) {
 }
 
 // Unconfirmed must still be offered: refusing to try would strand every
-// user on a platform Wirelark cannot inspect.
+// user on a platform Claude Companion cannot inspect.
 func TestUnconfirmedIsStillOffered(t *testing.T) {
 	if !Unconfirmed.Continuable() {
 		t.Error("an unconfirmed session must still be offered, then corrected honestly if it fails")
@@ -191,7 +191,7 @@ func TestUnconfirmedIsStillOffered(t *testing.T) {
 }
 
 func TestSnapshotRestoresTheSelectedSession(t *testing.T) {
-	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
+	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
 	r := NewRegistry()
 	r.Attach("sess-1", ownPID(), "/work/payments-api", Ready, &fakeChannel{})
 	r.Observe(Observation{ID: "sess-1", PID: ownPID(), Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: "UserPromptSubmit"})
@@ -216,7 +216,7 @@ func TestSnapshotRestoresTheSelectedSession(t *testing.T) {
 // A session whose process is gone must not come back from the snapshot as
 // something the user can talk to.
 func TestSnapshotDropsDeadSessions(t *testing.T) {
-	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
+	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
 	r := NewRegistry()
 	r.Observe(Observation{ID: "sess-dead", PID: 0x7fffffff, Dir: "/work/api", HookEvent: "SessionStart"})
 	if err := r.Save(); err != nil {

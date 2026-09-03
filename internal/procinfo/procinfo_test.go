@@ -13,33 +13,33 @@ func TestClassifyArgv(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "development flag naming wirelark",
-			argv: []string{"claude", "--dangerously-load-development-channels", "server:wirelark"},
+			name: "development flag naming claude-companion",
+			argv: []string{"claude", "--dangerously-load-development-channels", "server:claude-companion"},
 			want: true,
 		},
 		{
-			name: "channels flag naming wirelark",
-			argv: []string{"claude", "--channels", "server:wirelark"},
+			name: "channels flag naming claude-companion",
+			argv: []string{"claude", "--channels", "server:claude-companion"},
 			want: true,
 		},
 		{
-			name: "wirelark among several entries",
-			argv: []string{"claude", "--channels", "plugin:telegram@claude-plugins-official", "server:wirelark"},
+			name: "claude-companion among several entries",
+			argv: []string{"claude", "--channels", "plugin:telegram@claude-plugins-official", "server:claude-companion"},
 			want: true,
 		},
 		{
 			name: "equals spelling",
-			argv: []string{"claude", "--channels=server:wirelark"},
+			argv: []string{"claude", "--channels=server:claude-companion"},
 			want: true,
 		},
 		{
 			name: "bare name is tolerated",
-			argv: []string{"claude", "--channels", "wirelark"},
+			argv: []string{"claude", "--channels", "claude-companion"},
 			want: true,
 		},
 		{
-			name: "wirelark as a plugin entry",
-			argv: []string{"claude", "--channels", "plugin:wirelark@acme"},
+			name: "claude-companion as a plugin entry",
+			argv: []string{"claude", "--channels", "plugin:claude-companion@acme"},
 			want: true,
 		},
 		{
@@ -53,29 +53,29 @@ func TestClassifyArgv(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "wirelark is the prompt, not a channel entry",
-			argv: []string{"claude", "--model", "opus", "wirelark"},
+			name: "claude-companion is the prompt, not a channel entry",
+			argv: []string{"claude", "--model", "opus", "claude-companion"},
 			want: false,
 		},
 		{
 			name: "entry list ends at the next flag",
-			argv: []string{"claude", "--channels", "server:webhook", "--agent", "wirelark"},
+			argv: []string{"claude", "--channels", "server:webhook", "--agent", "claude-companion"},
 			want: false,
 		},
 		{
 			name: "equals spelling does not open the list for later args",
-			argv: []string{"claude", "--channels=server:webhook", "server:wirelark"},
+			argv: []string{"claude", "--channels=server:webhook", "server:claude-companion"},
 			want: false,
 		},
 		{
-			name: "a similarly named server is not wirelark",
-			argv: []string{"claude", "--channels", "server:wirelark-dev"},
+			name: "a similarly named server is not claude-companion",
+			argv: []string{"claude", "--channels", "server:claude-companion-dev"},
 			want: false,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := ClassifyArgv(tc.argv, "wirelark"); got != tc.want {
+			if got := ClassifyArgv(tc.argv, "claude-companion"); got != tc.want {
 				t.Errorf("ClassifyArgv(%q) = %v, want %v", tc.argv, got, tc.want)
 			}
 		})
@@ -85,7 +85,7 @@ func TestClassifyArgv(t *testing.T) {
 // A process that is gone (or a platform that cannot be asked) must read as
 // unconfirmed, never as a session that is definitely unreachable.
 func TestEnabledUnknownForMissingProcess(t *testing.T) {
-	enabled, known := Enabled(-1, "wirelark")
+	enabled, known := Enabled(-1, "claude-companion")
 	if enabled {
 		t.Error("a process that cannot be read must not report as channel-enabled")
 	}

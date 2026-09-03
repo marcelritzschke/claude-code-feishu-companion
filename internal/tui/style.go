@@ -1,9 +1,9 @@
 // Package tui is how setup looks and how it asks. It exists so that every
-// question Wirelark puts to a user is asked the same way, and so that the
+// question Claude Companion puts to a user is asked the same way, and so that the
 // setup command's appearance is one decision made in one place rather
 // than a print statement per prompt.
 //
-// Nothing else in Wirelark draws anything. The hook entrypoint and the
+// Nothing else in Claude Companion draws anything. The hook entrypoint and the
 // channel share stdio with a Claude Code session and must stay silent;
 // the daemon writes to a log. Setup is the one role with a screen.
 package tui
@@ -37,11 +37,11 @@ type palette struct {
 
 // styles builds the palette on first use, and never before.
 //
-// This laziness is load-bearing, not tidiness. All three Wirelark roles
+// This laziness is load-bearing, not tidiness. All three Claude Companion roles
 // are one binary, so this package is linked into the hook entrypoint too
 // - and building a lipgloss style constructs lipgloss's default renderer,
 // which interrogates the terminal for its colour scheme. As package-level
-// variables that happened during startup of every `wirelark send`: escape
+// variables that happened during startup of every `claude-companion send`: escape
 // sequences written into the Claude Code session's terminal, and a
 // quarter-second of waiting for a reply, on every single hook event. A
 // hook that costs that much and is visible while doing it is the one

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // PermissionCard is the highest-priority notification: Claude cannot

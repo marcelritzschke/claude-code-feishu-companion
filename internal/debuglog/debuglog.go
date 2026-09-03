@@ -1,10 +1,11 @@
-// Package debuglog is Wirelark's only output channel outside Feishu.
+// Package debuglog is Claude Companion's only output channel outside
+// Feishu.
 //
-// Every Wirelark role must stay invisible to the Claude Code session it
-// belongs to: hooks and the channel share the session's stdio, so a stray
-// write would land in the user's terminal or corrupt the MCP stream. So
-// nothing is ever printed - traces go to a file, and only when the user
-// asks for them with WIRELARK_DEBUG=1.
+// Every Claude Companion role must stay invisible to the Claude Code
+// session it belongs to: hooks and the channel share the session's stdio,
+// so a stray write would land in the user's terminal or corrupt the MCP
+// stream. So nothing is ever printed - traces go to a file, and only when
+// the user asks for them with CLAUDE_COMPANION_DEBUG=1.
 package debuglog
 
 import (
@@ -14,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
 )
 
-const envVar = "WIRELARK_DEBUG"
+const envVar = "CLAUDE_COMPANION_DEBUG"
 
 // mu serializes writes: the daemon traces from several goroutines at once.
 var mu sync.Mutex
 
-// Printf appends one line to the debug log when WIRELARK_DEBUG=1.
+// Printf appends one line to the debug log when CLAUDE_COMPANION_DEBUG=1.
 // It never logs secrets: only event names, project labels, and errors.
 func Printf(format string, args ...any) {
 	if os.Getenv(envVar) != "1" {

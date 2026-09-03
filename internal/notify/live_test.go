@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/session"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 func watched() session.Session {

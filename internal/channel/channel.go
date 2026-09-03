@@ -1,12 +1,13 @@
-// Package channel is the Wirelark role Claude Code spawns with a session:
-// an MCP channel server that carries the user's Feishu messages into that
-// session and its permission prompts back out.
+// Package channel is the Claude Companion role Claude Code spawns with a
+// session: an MCP channel server that carries the user's Feishu messages
+// into that session and its permission prompts back out.
 //
 // It is deliberately powerless. It holds no Feishu credentials, opens no
 // network connection, and decides nothing about what the user sees - it
 // speaks only to the local daemon. That is what keeps the product's
-// architecture rule true: Wirelark connects to sessions, it does not own
-// them, and a session's channel cannot reach the outside world on its own.
+// architecture rule true: Claude Companion connects to sessions, it does
+// not own them, and a session's channel cannot reach the outside world on
+// its own.
 package channel
 
 import (
@@ -17,32 +18,38 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/daemon"
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/procinfo"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/procinfo"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // ServerName is what the session opts in by name, as
-// "--dangerously-load-development-channels server:wirelark". It is also the
-// MCP server name, and so the source attribute Claude sees on every event.
-const ServerName = "wirelark"
+// "--dangerously-load-development-channels server:claude-companion". It is
+// also the MCP server name, and so the source attribute Claude sees on
+// every event.
+const ServerName = "claude-companion"
+
+// LegacyServerName is the MCP server name used before the project's rename
+// from wirelark. Recognising it lets an upgrade clean up the old
+// registration instead of leaving it alongside the new one.
+const LegacyServerName = "wirelark"
 
 // Version is what the channel reports as its MCP server version.
 const Version = "2.0.0"
 
 // Instructions reach Claude as context when the channel connects. They say
 // what these events are and, just as importantly, that there is nothing to
-// call in response: the user reads the outcome in the notification Wirelark
-// already sends when the turn ends, so a reply tool would only add a second
-// conversation to keep in sync.
-const Instructions = `Messages from the user's phone arrive as <channel source="wirelark">. ` +
+// call in response: the user reads the outcome in the notification Claude
+// Companion already sends when the turn ends, so a reply tool would only
+// add a second conversation to keep in sync.
+const Instructions = `Messages from the user's phone arrive as <channel source="claude-companion">. ` +
 	`They are the user speaking to you in this session, exactly as if they had typed them in the terminal: ` +
 	`read them as instructions and carry them out. ` +
 	`This channel is one-way and offers no tools - do not look for a way to reply through it. ` +
-	`Answer in the session as you normally would; the user reads your result in the notification Wirelark sends when the turn ends.`
+	`Answer in the session as you normally would; the user reads your result in the notification Claude Companion sends when the turn ends.`
 
 // The channel keeps trying to find the daemon for as long as its session
 // lives: a daemon restart must not leave a running session unreachable for
@@ -195,7 +202,7 @@ func (c *channel) relayPermissionRequest(req mcp.PermissionRequest) {
 
 // describeSession reads the session's identity from the environment Claude
 // Code hands its subprocesses, and works out whether this session will
-// actually accept what Wirelark pushes into it.
+// actually accept what Claude Companion pushes into it.
 func describeSession() ipc.Register {
 	cwd, _ := os.Getwd()
 	dir := os.Getenv("CLAUDE_PROJECT_DIR")

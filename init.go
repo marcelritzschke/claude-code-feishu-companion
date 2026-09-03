@@ -10,18 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/channel"
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/daemon"
-	"github.com/marcelritzschke/wirelark/internal/deliver"
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/hooksreg"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/register"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
-	"github.com/marcelritzschke/wirelark/internal/tui"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/deliver"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hooksreg"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/register"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/tui"
 )
 
 const initTimeout = 15 * time.Second
@@ -35,7 +35,7 @@ const inboundCheckTimeout = 2 * time.Minute
 // backstop against a poll that never returns.
 const registerTimeout = 15 * time.Minute
 
-// setupPath is how the Feishu app Wirelark talks through came to exist. It
+// setupPath is how the Feishu app Claude Companion talks through came to exist. It
 // is remembered only so that the advice printed when something does not
 // work matches what the user actually did: telling someone to tick a box
 // in a console they never opened is worse than saying nothing.
@@ -43,7 +43,7 @@ type setupPath int
 
 const (
 	// pathScanned means Feishu created the app from the QR registration,
-	// with Wirelark's permissions and subscriptions already requested.
+	// with Claude Companion's permissions and subscriptions already requested.
 	pathScanned setupPath = iota
 	// pathExisting means the user brought their own app, so nothing is
 	// known about how it is configured.
@@ -58,7 +58,7 @@ func runInit() error {
 	// arrow keys. Close gives it back, and must run whichever way this
 	// returns - including through a failure partway down.
 	defer tui.Close()
-	tui.Title("Wirelark", "Claude Code, on your phone")
+	tui.Title("Claude Companion", "Claude Code, on your phone")
 
 	cfg, client, how, err := connectFeishu()
 	if err != nil {
@@ -96,7 +96,7 @@ func runInit() error {
 	return nil
 }
 
-// connectFeishu gets Wirelark a working Feishu app and the identity of the
+// connectFeishu gets Claude Companion a working Feishu app and the identity of the
 // person it belongs to.
 //
 // It opens straight into the QR code rather than asking which way the user
@@ -142,7 +142,7 @@ func connectFeishu() (*config.Config, *feishu.Client, setupPath, error) {
 // the user is, which Feishu they are on - comes back from the one scan.
 func fromScan(res *register.Result) (*config.Config, *feishu.Client, error) {
 	if res.OwnerOpenID == "" {
-		// Without an identity there is no owner, and Wirelark would have
+		// Without an identity there is no owner, and Claude Companion would have
 		// nobody to send to and nobody to accept messages from.
 		return nil, nil, errors.New("feishu did not report who scanned the code")
 	}
@@ -158,7 +158,7 @@ func fromScan(res *register.Result) (*config.Config, *feishu.Client, error) {
 		return nil, nil, err
 	}
 	tui.Done("Connected to Feishu")
-	tui.Detail("the account you scanned with is this computer's Wirelark owner")
+	tui.Detail("the account you scanned with is this computer's Claude Companion owner")
 	tui.Blank()
 	return cfg, client, nil
 }
@@ -184,7 +184,7 @@ func askCredentials() (*config.Config, *feishu.Client, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	ident, err := tui.Ask("Who is Wirelark for?",
+	ident, err := tui.Ask("Who is Claude Companion for?",
 		"Your Feishu user id, or the email address on your Feishu account.", "ou_... or you@company.com", true)
 	if err != nil {
 		return nil, nil, err
@@ -216,10 +216,10 @@ func askCredentials() (*config.Config, *feishu.Client, error) {
 	return cfg, client, nil
 }
 
-// askBehavior asks the four questions that describe what Wirelark does,
+// askBehavior asks the four questions that describe what Claude Companion does,
 // in the user's terms rather than in hook events.
 func askBehavior(cfg *config.Config) error {
-	notify, err := tui.Choose("What should Wirelark tell you about?", "", []tui.Choice[config.NotifyLevel]{
+	notify, err := tui.Choose("What should Claude Companion tell you about?", "", []tui.Choice[config.NotifyLevel]{
 		{Label: "Important only", Note: "attention, failures, completion", Value: config.NotifyImportant},
 		{Label: "Important and progress", Note: "also pings once a task runs long", Value: config.NotifyProgress},
 	})
@@ -253,7 +253,7 @@ func askBehavior(cfg *config.Config) error {
 		return nil
 	}
 	perms, err := tui.Choose("Approve permission requests from Feishu?",
-		"Anyone who can message your Wirelark bot can allow or deny a command in your session while this is on.",
+		"Anyone who can message your Claude Companion bot can allow or deny a command in your session while this is on.",
 		[]tui.Choice[config.Switch]{
 			{Label: "Yes", Note: "cards get Allow and Deny buttons", Value: config.On},
 			{Label: "No", Note: "notifications only; answer in Claude Code", Value: config.Off},
@@ -274,7 +274,7 @@ func sendTestCard(cfg *config.Config, client *feishu.Client, how setupPath) erro
 	card, err := notify.CompletionCard(&hook.Payload{
 		HookEventName:        hook.EventStop,
 		Cwd:                  cwd,
-		LastAssistantMessage: "Wirelark is connected. You will get a message here when Claude finishes, hits a problem, or needs a decision from you.",
+		LastAssistantMessage: "Claude Companion is connected. You will get a message here when Claude finishes, hits a problem, or needs a decision from you.",
 	}, testTurn, notify.Options{Detail: deliver.DetailOf(cfg)})
 	if err != nil {
 		return err
@@ -291,19 +291,19 @@ func sendTestCard(cfg *config.Config, client *feishu.Client, how setupPath) erro
 	return nil
 }
 
-// registerHooks puts Wirelark's hooks in the user's Claude Code settings.
+// registerHooks puts Claude Companion's hooks in the user's Claude Code settings.
 func registerHooks(cfg *config.Config, cmd string) error {
 	settingsPath, err := hooksreg.SettingsPath()
 	if err != nil {
 		return err
 	}
-	ok, err := tui.Confirm("Register Wirelark's hooks with Claude Code?",
-		"Adds Wirelark to "+settingsPath+", keeping a backup alongside.")
+	ok, err := tui.Confirm("Register Claude Companion's hooks with Claude Code?",
+		"Adds Claude Companion to "+settingsPath+", keeping a backup alongside.")
 	if err != nil {
 		return err
 	}
 	if !ok {
-		tui.Warn("Skipped hook registration - Wirelark will stay quiet until it is done")
+		tui.Warn("Skipped hook registration - Claude Companion will stay quiet until it is done")
 		return nil
 	}
 	changed, err := hooksreg.Register(settingsPath, cmd, hooksreg.Settings{
@@ -324,7 +324,7 @@ func registerHooks(cfg *config.Config, cmd string) error {
 
 // registerChannel registers the channel server with Claude Code, through
 // Claude Code's own CLI. ~/.claude.json is Claude Code's state file, not a
-// configuration format Wirelark should be editing behind its back.
+// configuration format Claude Companion should be editing behind its back.
 func registerChannel() error {
 	exe, err := executablePath()
 	if err != nil {
@@ -332,7 +332,7 @@ func registerChannel() error {
 	}
 	addArgs := []string{"mcp", "add", "-s", "user", channel.ServerName, "--", exe, "channel"}
 
-	ok, err := tui.Confirm("Register the Wirelark channel with Claude Code?",
+	ok, err := tui.Confirm("Register the Claude Companion channel with Claude Code?",
 		"This is what carries your replies into a running session.")
 	if err != nil {
 		return err
@@ -349,10 +349,12 @@ func registerChannel() error {
 		return nil
 	}
 
-	// Remove first so a Wirelark installed at a different path is replaced
-	// rather than left alongside this one. Only Wirelark's own entry is
-	// touched, and its absence is not an error.
+	// Remove first so a Claude Companion installed at a different path, or
+	// registered under the project's former name (wirelark), is replaced
+	// rather than left alongside this one. Only Claude Companion's own
+	// entries are touched, and their absence is not an error.
 	_ = exec.Command(claude, "mcp", "remove", "-s", "user", channel.ServerName).Run()
+	_ = exec.Command(claude, "mcp", "remove", "-s", "user", channel.LegacyServerName).Run()
 
 	if out, err := exec.Command(claude, addArgs...).CombinedOutput(); err != nil {
 		tui.Warn("claude mcp add failed - register it yourself with:")
@@ -372,11 +374,11 @@ func checkReturnPath(how setupPath) {
 	tui.Step("Checking that Feishu can reach this computer")
 	tui.Blank()
 	if err := daemon.EnsureRunning(); err != nil {
-		tui.Fail("Could not start the Wirelark daemon")
+		tui.Fail("Could not start the Claude Companion daemon")
 		tui.Detail(err.Error())
 		return
 	}
-	tui.Info("Send any message to the Wirelark bot in Feishu now.")
+	tui.Info("Send any message to the Claude Companion bot in Feishu now.")
 	tui.Detail(fmt.Sprintf("waiting up to %s", inboundCheckTimeout))
 
 	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, inboundCheckTimeout)
@@ -401,11 +403,11 @@ func checkReturnPath(how setupPath) {
 // the useful advice there is about approval and about the app being
 // released, not about a console the user never opened.
 func explainNoInbound(how setupPath, err error) {
-	tui.Warn("No message reached Wirelark")
+	tui.Warn("No message reached Claude Companion")
 	tui.Detail(err.Error())
 	tui.Blank()
 	if how == pathScanned {
-		tui.Detail("The registration asked Feishu for everything Wirelark needs, so this\n" +
+		tui.Detail("The registration asked Feishu for everything Claude Companion needs, so this\n" +
 			"usually means the app is waiting on someone:\n" +
 			"  - the permissions may still need your administrator's approval\n" +
 			"  - the app version may need releasing before subscriptions take effect")
@@ -415,10 +417,10 @@ func explainNoInbound(how setupPath, err error) {
 			needsList())
 	}
 	tui.Blank()
-	tui.Info("Notifications already work. Re-run %s once that is fixed.", tui.Code("wirelark init"))
+	tui.Info("Notifications already work. Re-run %s once that is fixed.", tui.Code("claude-companion init"))
 }
 
-// needsList renders what Wirelark asks a Feishu app for, from the same
+// needsList renders what Claude Companion asks a Feishu app for, from the same
 // list the registration requests, so console instructions and the QR flow
 // can never drift apart.
 func needsList() string {
@@ -443,7 +445,7 @@ func whyNoCard(how setupPath) string {
 	if how == pathScanned {
 		return "The app was created, so the credentials are real - something is holding it back.\n" +
 			"Most often the permissions are waiting on an administrator's approval, or the\n" +
-			"app has not been released to you yet. Re-run wirelark init after that."
+			"app has not been released to you yet. Re-run claude-companion init after that."
 	}
 	return "Check the app credentials, that the app has the bot capability, and that\n" +
 		"you are inside the app's availability scope."
@@ -457,7 +459,7 @@ func explainLaunch() {
 	tui.Step("One more thing")
 	tui.Blank()
 	tui.Info("Claude Code channels are a research preview, and a channel that is not on")
-	tui.Info("Anthropic's allowlist has to be opted in per session. Until Wirelark is on")
+	tui.Info("Anthropic's allowlist has to be opted in per session. Until Claude Companion is on")
 	tui.Info("that list, start sessions you want to continue from Feishu with:")
 	tui.Blank()
 	tui.Detail("claude --dangerously-load-development-channels server:" + channel.ServerName)

@@ -1,4 +1,4 @@
-// Package flock is Wirelark's advisory file locking, in the two flavours it
+// Package flock is Claude Companion's advisory file locking, in the two flavours it
 // needs: a blocking lock to serialize the state file between concurrent
 // hook processes, and a non-blocking one that lets exactly one daemon own
 // the machine.

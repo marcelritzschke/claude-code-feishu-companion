@@ -10,7 +10,7 @@ import (
 //
 // Card callbacks are a separate subscription in the Feishu console from
 // card delivery, and an app can send perfectly good cards while every
-// button on them is inert. Wirelark cannot detect that, and a product whose
+// button on them is inert. Claude Companion cannot detect that, and a product whose
 // only way to pick a session is a button that silently does nothing is a
 // product that does nothing. So the buttons are a convenience and the
 // typed forms are the contract.
@@ -40,7 +40,7 @@ func parseVerdict(text string) (requestID string, allow, ok bool) {
 // own for the selected one, or "watch 2" for the second session of the
 // last overview. The whole message has to be the command, exactly as with
 // the overview words: "watch the test output and tell me" is an
-// instruction for Claude, not a Wirelark command.
+// instruction for Claude, not a Claude Companion command.
 var watchReply = regexp.MustCompile(`(?i)^\s*/?watch\s*(\d*)\s*$`)
 
 // stopWatchReply matches a request to stop looking.

@@ -1,7 +1,7 @@
 # Setup and configuration
 
-This document covers Wirelark installation, Feishu app setup, and local
-configuration. For the product overview, start with the
+This document covers Claude Companion installation, Feishu app setup, and
+local configuration. For the product overview, start with the
 [README](../README.md).
 
 ## Install a release binary
@@ -9,29 +9,31 @@ configuration. For the product overview, start with the
 On macOS or Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcelritzschke/wirelark/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
-The installer detects macOS or Linux and amd64 or arm64, downloads the matching
-[GitHub Release](https://github.com/marcelritzschke/wirelark/releases), verifies
-it against the release's `checksums.txt`, and installs it to `~/.local/bin`.
+The installer detects macOS or Linux and amd64 or arm64, downloads the
+matching
+[GitHub Release](https://github.com/marcelritzschke/claude-code-feishu-companion/releases),
+verifies it against the release's `checksums.txt`, and installs it to
+`~/.local/bin`.
 
 Set `INSTALL_DIR` to choose another location or `VERSION` to install a specific
 tag:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcelritzschke/wirelark/main/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | INSTALL_DIR=/usr/local/bin sh
 ```
 
-The script above is [`install.sh`](../install.sh) at the repository root, so it
-can be inspected before running. On Windows, download the `.zip` from the
-releases page, verify it against the release checksums, and put `wirelark.exe`
-on your `PATH`.
+The script above is [`install.sh`](../install.sh) at the repository root, so
+it can be inspected before running. On Windows, download the `.zip` from the
+releases page, verify it against the release checksums, and put
+`claude-companion.exe` on your `PATH`.
 
 If you already have a Go toolchain, this is also supported:
 
 ```sh
-go install github.com/marcelritzschke/wirelark@latest
+go install github.com/marcelritzschke/claude-code-feishu-companion@latest
 ```
 
 ## QR onboarding
@@ -39,13 +41,13 @@ go install github.com/marcelritzschke/wirelark@latest
 Run:
 
 ```sh
-wirelark init
+claude-companion init
 ```
 
 The default flow is:
 
 ```text
-wirelark init
+claude-companion init
     ↓
 scan the Feishu QR code
     ↓
@@ -58,9 +60,10 @@ receive a test card
 done
 ```
 
-The QR opens Feishu's app-registration flow with the required capabilities and
-subscriptions pre-filled. The account that scans becomes the owner for this
-Wirelark installation: the account Wirelark messages and accepts messages from.
+The QR opens Feishu's app-registration flow with the required capabilities
+and subscriptions pre-filled. The account that scans becomes the owner for
+this Claude Companion installation: the account Claude Companion messages
+and accepts messages from.
 
 After approval, `init` registers the Claude Code hooks and channel, starts the
 local daemon, sends a test card, and verifies that Feishu can reach the local
@@ -88,14 +91,14 @@ available.
 
 ## Configuration
 
-On Linux, configuration is stored at
-`~/.config/wirelark/config.toml` with mode `0600`; macOS and Windows use their
-platform-equivalent user configuration directories:
+On Linux, configuration is stored at `~/.config/claude-companion/config.toml`
+with mode `0600`; macOS and Windows use their platform-equivalent user
+configuration directories:
 
 ```toml
 app_id = "cli_..."
 app_secret = "..."
-open_id = "ou_..."           # the configured Wirelark owner
+open_id = "ou_..."           # the configured Claude Companion owner
 brand = "feishu"             # use "lark" for open.larksuite.com
 
 notify = "important"            # attention, failures, completion
@@ -104,26 +107,27 @@ notify = "important"            # attention, failures, completion
 detail = "normal"               # summary, validation, answer excerpt
 # detail = "compact"            # shorter completion cards
 
-remote = "on"                   # "off" makes Wirelark notification-only
+remote = "on"                   # "off" makes it notification-only
 remote_permissions = "on"       # configured separately from continuation
 ```
 
-Re-run `wirelark init` after changing behavior settings so hook registration
-matches the new configuration. Existing unrelated Claude Code hooks are
-preserved, and Wirelark's registration is idempotent.
+Re-run `claude-companion init` after changing behavior settings so hook
+registration matches the new configuration. Existing unrelated Claude Code
+hooks are preserved, and Claude Companion's registration is idempotent.
 
-`WIRELARK_CONFIG` points Wirelark at a different configuration file.
-`WIRELARK_STATE_DIR` points it at a different runtime-state directory. Using
-both allows a separate local installation without touching the default one.
+`CLAUDE_COMPANION_CONFIG` points Claude Companion at a different
+configuration file. `CLAUDE_COMPANION_STATE_DIR` points it at a different
+runtime-state directory. Using both allows a separate local installation
+without touching the default one.
 
 ## Starting a remote-ready Claude Code session
 
-Claude Code Channels are currently a research preview. Until Wirelark is on
-Anthropic's channel allowlist, start a session you want to continue from
-Feishu with:
+Claude Code Channels are currently a research preview. Until Claude
+Companion is on Anthropic's channel allowlist, start a session you want to
+continue from Feishu with:
 
 ```sh
-claude --dangerously-load-development-channels server:wirelark
+claude --dangerously-load-development-channels server:claude-companion
 ```
 
 A session started with plain `claude` is still discovered and sends

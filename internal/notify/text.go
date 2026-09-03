@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // Excerpt and truncation caps, in runes. Everything the phone user sees is
@@ -156,7 +156,7 @@ var actions = map[string]action{
 }
 
 // describeAction renders a permission request as a human-readable action,
-// e.g. "Run:\ngo test ./...". A tool Wirelark does not know is named, not
+// e.g. "Run:\ngo test ./...". A tool Claude Companion does not know is named, not
 // dumped: the raw event payload is never the message.
 func describeAction(tool string, input map[string]any, cwd string) string {
 	a, known := actions[tool]
@@ -177,7 +177,7 @@ func describeAction(tool string, input map[string]any, cwd string) string {
 }
 
 // readableTool turns a tool identifier into something a phone user can
-// read. MCP tools arrive as "mcp__<server>__<tool>", which is Wirelark's
+// read. MCP tools arrive as "mcp__<server>__<tool>", which is Claude Companion's
 // internal event representation leaking, not a name.
 func readableTool(tool string) string {
 	rest, ok := strings.CutPrefix(tool, "mcp__")

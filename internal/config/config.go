@@ -1,4 +1,4 @@
-// Package config loads and saves the Wirelark configuration. The settings
+// Package config loads and saves the Claude Companion configuration. The settings
 // are behavioral, not technical: what to notify about and how much detail
 // completions carry.
 package config
@@ -12,7 +12,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/marcelritzschke/wirelark/internal/secfile"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
 // NotifyLevel is what the user wants to hear about.
@@ -103,7 +103,7 @@ func (c *Config) OpenBaseURL() string {
 }
 
 // EnvVar lets tests (and users) point the binary at another config file.
-const EnvVar = "WIRELARK_CONFIG"
+const EnvVar = "CLAUDE_COMPANION_CONFIG"
 
 // Config is the on-disk configuration.
 type Config struct {
@@ -119,7 +119,7 @@ type Config struct {
 	Detail DetailLevel `toml:"detail"`
 
 	// Remote is whether a session may be continued from Feishu at all.
-	// With it off, Wirelark is exactly the V1 one-way notifier.
+	// With it off, Claude Companion is exactly the V1 one-way notifier.
 	Remote Switch `toml:"remote"`
 	// RemotePermissions is whether tool approvals may be answered from
 	// Feishu. It is separate from Remote because it is a different kind of
@@ -148,8 +148,8 @@ func (c *Config) CompactCompletions() bool {
 	return c.Detail == DetailCompact
 }
 
-// Path returns the config file path: $WIRELARK_CONFIG if set,
-// otherwise <user config dir>/wirelark/config.toml.
+// Path returns the config file path: $CLAUDE_COMPANION_CONFIG if set,
+// otherwise <user config dir>/claude-companion/config.toml.
 func Path() (string, error) {
 	if p := os.Getenv(EnvVar); p != "" {
 		return p, nil
@@ -158,7 +158,7 @@ func Path() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve user config dir: %w", err)
 	}
-	return filepath.Join(dir, "wirelark", "config.toml"), nil
+	return filepath.Join(dir, "claude-companion", "config.toml"), nil
 }
 
 // Load reads the config from Path, applying defaults for unset behavior

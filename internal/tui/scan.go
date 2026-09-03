@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/register"
-	"github.com/marcelritzschke/wirelark/internal/termqr"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/register"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/termqr"
 )
 
 // Outcome is how the scan screen ended.
@@ -93,7 +93,7 @@ func Scan(ctx context.Context) (*register.Result, Outcome, error) {
 	// has scrolled the window there is no way to rewind above the top of
 	// the screen to repaint it. A footer is always two lines, and two
 	// lines always fit.
-	out("\n%s%s\n\n", indent, styles().step.Render("Connect Wirelark to Feishu"))
+	out("\n%s%s\n\n", indent, styles().step.Render("Connect Claude Companion to Feishu"))
 	for {
 		select {
 		case got := <-qrs:
@@ -138,7 +138,7 @@ type qrInfo struct {
 }
 
 func waitingForCode(spin string) string {
-	return "\n" + indent + styles().step.Render("Connect Wirelark to Feishu") + "\n\n" +
+	return "\n" + indent + styles().step.Render("Connect Claude Companion to Feishu") + "\n\n" +
 		indent + spin + " " + styles().muted.Render("asking Feishu for a code…") + "\n"
 }
 
@@ -152,8 +152,8 @@ func (q *qrInfo) body() string {
 	}
 	var b strings.Builder
 	b.WriteString(qrBlock(q.url))
-	b.WriteString(indent + "Scan with Feishu, then approve what Wirelark asks for.\n")
-	b.WriteString(indent + styles().muted.Render("The account you scan with becomes this computer's Wirelark owner.") + "\n\n")
+	b.WriteString(indent + "Scan with Feishu, then approve what Claude Companion asks for.\n")
+	b.WriteString(indent + styles().muted.Render("The account you scan with becomes this computer's Claude Companion owner.") + "\n\n")
 	b.WriteString(indent + styles().muted.Render("Can't scan? ") + styles().link.Render(q.url) + "\n\n")
 	q.cached = b.String()
 	return q.cached

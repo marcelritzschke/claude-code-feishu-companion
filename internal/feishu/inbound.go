@@ -12,8 +12,8 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 )
 
 // Inbound is the return path Feishu has no other way to open: a WebSocket
@@ -144,7 +144,7 @@ func (in *Inbound) emitMessage(m Message) {
 }
 
 // fromConfiguredUser reports whether a message came from the one account
-// Wirelark answers to, matching against whichever id kind was configured.
+// Claude Companion answers to, matching against whichever id kind was configured.
 func (in *Inbound) fromConfiguredUser(sender *larkim.EventSender) bool {
 	if sender == nil || sender.SenderId == nil {
 		return false

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/marcelritzschke/wirelark/internal/debuglog"
+import "github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 
 // debugLog keeps the short call sites in package main while the log itself
 // lives in one place every role shares.

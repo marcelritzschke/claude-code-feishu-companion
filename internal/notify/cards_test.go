@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // decodeCard parses a card into a generic map so tests assert on structure
@@ -242,7 +242,7 @@ func TestQuestionCard(t *testing.T) {
 		t.Errorf("options = %q", divs[0])
 	}
 	// A question is a terminal dialog: no channel can answer it, so the
-	// card must say where it has to be answered rather than imply Wirelark
+	// card must say where it has to be answered rather than imply Claude Companion
 	// could take the answer.
 	if note != "This interaction must currently be handled in Claude Code." {
 		t.Errorf("note = %q", note)

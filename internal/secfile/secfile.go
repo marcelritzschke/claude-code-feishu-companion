@@ -1,4 +1,4 @@
-// Package secfile writes the small files Wirelark owns or edits - its
+// Package secfile writes the small files Claude Companion owns or edits - its
 // config, its token cache, the user's Claude Code settings - with
 // restrictive permissions and an atomic temp-file+rename, so a crash
 // mid-write can never leave a truncated file behind and a file holding

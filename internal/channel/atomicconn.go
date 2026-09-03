@@ -3,7 +3,7 @@ package channel
 import (
 	"sync"
 
-	"github.com/marcelritzschke/wirelark/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 )
 
 // atomicConn holds the current daemon connection. The MCP loop and the

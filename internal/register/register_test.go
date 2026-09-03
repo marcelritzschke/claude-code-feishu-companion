@@ -24,8 +24,8 @@ func TestExplainIsActionable(t *testing.T) {
 		want string
 	}{
 		{"declined", &registration.AccessDeniedError{RegisterAppError: regErr}, "administrator"},
-		{"expired", &registration.ExpiredError{RegisterAppError: regErr}, "wirelark init"},
-		{"timed out", context.DeadlineExceeded, "wirelark init"},
+		{"expired", &registration.ExpiredError{RegisterAppError: regErr}, "claude-companion init"},
+		{"timed out", context.DeadlineExceeded, "claude-companion init"},
 		{"refused", regErr, "bad addons"},
 		{"anything else", errors.New("dial tcp: no route to host"), "no route to host"},
 	}
@@ -78,11 +78,11 @@ func TestQuietlyDropsOnlyTheSDKChatter(t *testing.T) {
 	}
 }
 
-// TestNeedsCoversWirelarksTwoDirections is a reminder in test form: the
+// TestNeedsCoversCompanionsTwoDirections is a reminder in test form: the
 // list is what a user's app will be able to do, so shrinking it silently
-// breaks a feature and growing it silently asks for more than Wirelark
+// breaks a feature and growing it silently asks for more than Claude Companion
 // uses.
-func TestNeedsCoversWirelarksTwoDirections(t *testing.T) {
+func TestNeedsCoversCompanionsTwoDirections(t *testing.T) {
 	needs := Needs()
 	for _, want := range []struct {
 		what string

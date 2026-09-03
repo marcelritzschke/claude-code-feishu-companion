@@ -17,9 +17,9 @@ import (
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/paths"
-	"github.com/marcelritzschke/wirelark/internal/secfile"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
 // Client sends and updates cards in the configured user's DM as the bot. It
@@ -157,7 +157,7 @@ type cacheEntry struct {
 	ExpireAt time.Time `json:"expire_at"`
 }
 
-// newDiskTokenCache returns a cache at token.json in Wirelark's private
+// newDiskTokenCache returns a cache at token.json in Claude Companion's private
 // directory.
 func newDiskTokenCache() (larkcore.Cache, error) {
 	path, err := paths.File("token.json")

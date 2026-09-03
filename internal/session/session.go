@@ -1,4 +1,4 @@
-// Package session is Wirelark's picture of the Claude Code sessions running
+// Package session is Claude Companion's picture of the Claude Code sessions running
 // on this machine: which exist, what each is broadly doing, and whether it
 // can be continued from Feishu.
 //
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
 )
 
 // State is what a session is broadly doing, in the only three shades the
@@ -32,13 +32,13 @@ const (
 	Waiting State = "waiting"
 )
 
-// Remote is how far Wirelark can trust that a session accepts remote input.
+// Remote is how far Claude Companion can trust that a session accepts remote input.
 type Remote string
 
 const (
-	// Ready: the session was started with a channels flag naming Wirelark.
+	// Ready: the session was started with a channels flag naming Claude Companion.
 	Ready Remote = "ready"
-	// Notifications: the session runs without Wirelark as a channel. It
+	// Notifications: the session runs without Claude Companion as a channel. It
 	// still produces notifications; it cannot be continued.
 	Notifications Remote = "notifications"
 	// Unconfirmed: this platform could not tell. Never presented as ready -
@@ -46,7 +46,7 @@ const (
 	Unconfirmed Remote = "unconfirmed"
 )
 
-// Continuable reports whether Wirelark may offer to continue this session.
+// Continuable reports whether Claude Companion may offer to continue this session.
 // Unconfirmed counts: refusing to try would strand every Windows user, and
 // a delivery that goes nowhere corrects the record honestly.
 func (r Remote) Continuable() bool { return r == Ready || r == Unconfirmed }
@@ -80,7 +80,7 @@ type Session struct {
 	// LastSeen is when anything was last heard about this session.
 	LastSeen time.Time
 
-	// channel is nil for a session Wirelark only hears about through hooks.
+	// channel is nil for a session Claude Companion only hears about through hooks.
 	channel Channel
 }
 
@@ -109,7 +109,7 @@ func (s *Session) Describe() string {
 // Attached reports whether a channel is currently connected to the session.
 func (s *Session) Attached() bool { return s.channel != nil }
 
-// Watchable reports whether Wirelark can show what this session is doing.
+// Watchable reports whether Claude Companion can show what this session is doing.
 // It needs no channel: watching only reads the transcript the session's
 // hooks already point at, so a notifications-only session can be watched
 // even though it cannot be continued.

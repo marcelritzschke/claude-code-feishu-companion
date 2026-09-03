@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/flock"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/flock"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
 )
 
 // The daemon must be running for Feishu to reach a session, but starting it
@@ -28,7 +28,7 @@ const (
 )
 
 // ErrAlreadyRunning reports that another daemon holds the lock.
-var ErrAlreadyRunning = errors.New("a wirelark daemon is already running")
+var ErrAlreadyRunning = errors.New("a claude-companion daemon is already running")
 
 // acquire takes the single-daemon lock. The returned file must stay open
 // for as long as the daemon runs: the lock lives on the descriptor, so

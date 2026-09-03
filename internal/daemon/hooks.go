@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/deliver"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/session"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/deliver"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // serveHook takes one hook event off the hook process's hands.
@@ -33,7 +33,7 @@ func (d *Daemon) serveHook(ctx context.Context, conn *ipc.Conn, first ipc.Envelo
 	d.handleHook(ctx, p, h)
 }
 
-// handleHook updates what Wirelark knows about the session, settles
+// handleHook updates what Claude Companion knows about the session, settles
 // anything the event proves is over, and delivers whatever card the event
 // calls for.
 func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {

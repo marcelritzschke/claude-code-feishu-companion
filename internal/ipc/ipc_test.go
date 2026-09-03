@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // private points every path this package uses at a directory of the test's
@@ -26,7 +26,7 @@ func private(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	t.Setenv("WIRELARK_STATE_DIR", dir)
+	t.Setenv("CLAUDE_COMPANION_STATE_DIR", dir)
 }
 
 func TestRoundTrip(t *testing.T) {

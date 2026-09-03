@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
-	"github.com/marcelritzschke/wirelark/internal/session"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // Caps for the live card, in runes. A live card is read in a few seconds
@@ -53,7 +53,7 @@ func LiveCard(s session.Session, turn *transcript.Turn, updated time.Time) (stri
 // SettledWatchCard is what a watched card becomes when there is nothing
 // live left to show: the turn's outcome, and the way back into the session.
 //
-// It is the fallback settle. A turn that ends while Wirelark is watching
+// It is the fallback settle. A turn that ends while Claude Companion is watching
 // normally settles into the ordinary completion or failure notification,
 // which is the same card the user already knows from V1; this one covers
 // watching a session that is between turns, and watches that end for a
@@ -98,7 +98,7 @@ func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (st
 		})
 	}
 	if note == "" {
-		note = "Claude is still working. Wirelark will tell you when it finishes."
+		note = "Claude is still working. Claude Companion will tell you when it finishes."
 	}
 	return card("grey", "⏸️ Stopped watching", liveContext(s, turn), bodies, buttons, note)
 }

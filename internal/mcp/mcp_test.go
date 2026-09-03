@@ -50,9 +50,9 @@ const initialize = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"pro
 
 // The handshake is what makes this server a channel. Without the
 // experimental key Claude Code registers no listener and every message
-// Wirelark pushes disappears without an error.
+// Claude Companion pushes disappears without an error.
 func TestInitializeDeclaresTheChannelCapability(t *testing.T) {
-	s := New("wirelark", "2.0.0", "instructions", true)
+	s := New("claude-companion", "2.0.0", "instructions", true)
 	replies := serve(t, s, initialize)
 	if len(replies) != 1 {
 		t.Fatalf("got %d replies to initialize, want 1", len(replies))
@@ -86,7 +86,7 @@ func TestInitializeDeclaresTheChannelCapability(t *testing.T) {
 // channel approve tool use. When it is switched off it must not be
 // declared, because declaring it is what makes Claude Code send prompts.
 func TestPermissionRelayIsNotDeclaredWhenOff(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", false)
+	s := New("claude-companion", "2.0.0", "", false)
 	replies := serve(t, s, initialize)
 	result := replies[0]["result"].(map[string]any)
 	exp := result["capabilities"].(map[string]any)["experimental"].(map[string]any)
@@ -100,7 +100,7 @@ func TestPermissionRelayIsNotDeclaredWhenOff(t *testing.T) {
 
 // A peer waiting on a reply that never comes is worse than one told no.
 func TestUnknownRequestIsAnswered(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	replies := serve(t, s, `{"jsonrpc":"2.0","id":7,"method":"tools/list"}`)
 	if len(replies) != 1 {
 		t.Fatalf("got %d replies, want the request answered", len(replies))
@@ -115,7 +115,7 @@ func TestUnknownRequestIsAnswered(t *testing.T) {
 }
 
 func TestPingIsAnswered(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	replies := serve(t, s, `{"jsonrpc":"2.0","id":2,"method":"ping"}`)
 	if len(replies) != 1 || replies[0]["result"] == nil {
 		t.Errorf("ping reply = %+v, want an empty result", replies)
@@ -125,7 +125,7 @@ func TestPingIsAnswered(t *testing.T) {
 // A malformed message from the peer must not take the channel down: the
 // session would lose its only way to be reached.
 func TestGarbageDoesNotEndTheChannel(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	replies := serve(t, s, `not json at all`, initialize)
 	if len(replies) != 1 || replies[0]["result"] == nil {
 		t.Errorf("replies = %+v, want the channel to have survived and answered initialize", replies)
@@ -133,7 +133,7 @@ func TestGarbageDoesNotEndTheChannel(t *testing.T) {
 }
 
 func TestPushEventShape(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	out := idle(t, s)
 
 	if err := s.PushEvent("check the mobile client first", map[string]string{
@@ -169,7 +169,7 @@ func TestPushEventShape(t *testing.T) {
 }
 
 func TestSendVerdictShape(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	out := idle(t, s)
 
 	if err := s.SendVerdict("abcde", "allow"); err != nil {
@@ -192,7 +192,7 @@ func TestSendVerdictShape(t *testing.T) {
 }
 
 func TestPermissionRequestReachesTheHandler(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	got := make(chan PermissionRequest, 1)
 	s.OnPermissionRequest(func(r PermissionRequest) { got <- r })
 
@@ -215,7 +215,7 @@ func TestPermissionRequestReachesTheHandler(t *testing.T) {
 // A verdict without an id is discarded by Claude Code anyway; relaying one
 // to the user would offer them a button that cannot work.
 func TestPermissionRequestWithoutIDIsIgnored(t *testing.T) {
-	s := New("wirelark", "2.0.0", "", true)
+	s := New("claude-companion", "2.0.0", "", true)
 	got := make(chan PermissionRequest, 1)
 	s.OnPermissionRequest(func(r PermissionRequest) { got <- r })
 

@@ -1,6 +1,7 @@
-// Package hooksreg registers Wirelark's command hooks in a Claude Code
-// settings.json, merging with (never replacing) existing entries and
-// removing registrations left by older or relocated Wirelark installs.
+// Package hooksreg registers Claude Companion's command hooks in a Claude
+// Code settings.json, merging with (never replacing) existing entries and
+// removing registrations left by older or relocated Claude Companion
+// installs.
 package hooksreg
 
 import (
@@ -11,18 +12,18 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/secfile"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
-// registration pairs a hook event with the matcher Wirelark needs. Empty
-// matcher means every occurrence of the event.
+// registration pairs a hook event with the matcher Claude Companion needs.
+// Empty matcher means every occurrence of the event.
 type registration struct {
 	event   string
 	matcher string
 }
 
 // Settings are the parts of the user's configuration that change which
-// hooks Wirelark needs.
+// hooks Claude Companion needs.
 type Settings struct {
 	// Progress adds the checkpoints long-running progress updates are
 	// built from.
@@ -33,14 +34,14 @@ type Settings struct {
 	Remote bool
 }
 
-// registrationsFor lists the hooks Wirelark needs under the given settings:
+// registrationsFor lists the hooks Claude Companion needs under the given settings:
 //   - PermissionRequest: Claude is blocked on a permission decision
 //   - PreToolUse (AskUserQuestion): Claude is blocked on a question
 //   - Stop: the turn finished
 //   - StopFailure: the turn ended on an API error
 //   - PostToolUse: checkpoints for long-running progress updates, and only
 //     when those are switched on - at the default level it would spawn a
-//     Wirelark process per tool call with nothing to say.
+//     Claude Companion process per tool call with nothing to say.
 //   - SessionStart, SessionEnd, UserPromptSubmit: which sessions exist and
 //     what each is doing, for the Feishu session overview.
 func registrationsFor(s Settings) []registration {
@@ -62,21 +63,22 @@ func registrationsFor(s Settings) []registration {
 	return regs
 }
 
-// managedEvents is every event Wirelark registers on now or has registered
-// in the past. A Wirelark hook found on one of these that the current
-// settings do not call for is removed, so re-running init after moving the
-// binary, or after turning progress off, leaves exactly one correct set of
-// hooks behind.
+// managedEvents is every event Claude Companion registers on now or has
+// registered in the past. A Claude Companion hook found on one of these
+// that the current settings do not call for is removed, so re-running init
+// after moving the binary, or after turning progress off, leaves exactly
+// one correct set of hooks behind.
 var managedEvents = []string{
 	"PermissionRequest", "PreToolUse", "PostToolUse", "Stop", "StopFailure",
 	"Notification", "SessionStart", "SessionEnd", "UserPromptSubmit",
 }
 
-// wirelarkCommand matches a hook command that runs a wirelark binary,
-// whichever path it was installed at. Recognising Wirelark's own entries
-// by name (not by exact command string) is what lets a relocated install
-// clean up after its predecessor instead of double-registering.
-var wirelarkCommand = regexp.MustCompile(`(?i)(?:^|[/\\"'])wirelark(?:\.exe)?["']?\s+send\b`)
+// companionCommand matches a hook command that runs a Claude Companion
+// binary, whichever path it was installed at, under either the current
+// binary name or the project's former name (wirelark), so an upgrade from
+// an older install still cleans up after its predecessor instead of
+// double-registering.
+var companionCommand = regexp.MustCompile(`(?i)(?:^|[/\\"'])(?:claude-companion|wirelark)(?:\.exe)?["']?\s+send\b`)
 
 // SettingsPath returns the user-level Claude Code settings.json path.
 func SettingsPath() (string, error) {
@@ -88,11 +90,11 @@ func SettingsPath() (string, error) {
 }
 
 // Register merges the hook entries invoking command into settingsPath and
-// removes every other Wirelark entry, including those left by an older or
-// relocated install and those for events the current settings no longer
-// use. It is idempotent and preserves all non-Wirelark content. Returns
-// whether anything changed. A backup of the previous file is written next
-// to it before modifying.
+// removes every other Claude Companion entry, including those left by an
+// older or relocated install and those for events the current settings no
+// longer use. It is idempotent and preserves all non-Claude-Companion
+// content. Returns whether anything changed. A backup of the previous file
+// is written next to it before modifying.
 func Register(settingsPath, command string, opts Settings) (bool, error) {
 	raw, err := os.ReadFile(settingsPath)
 	var settings map[string]any
@@ -124,7 +126,7 @@ func Register(settingsPath, command string, opts Settings) (bool, error) {
 		if wanted[event] {
 			keep = command // this event's current registration survives
 		}
-		if pruneWirelark(hooks, event, keep) {
+		if pruneCompanion(hooks, event, keep) {
 			changed = true
 		}
 	}
@@ -159,9 +161,9 @@ func Register(settingsPath, command string, opts Settings) (bool, error) {
 	return true, nil
 }
 
-// newGroup builds the matcher group for one registration. All Wirelark
-// hooks are async: they deliver a notification and never hold up the
-// session.
+// newGroup builds the matcher group for one registration. All Claude
+// Companion hooks are async: they deliver a notification and never hold up
+// the session.
 func newGroup(reg registration, command string) map[string]any {
 	hook := map[string]any{
 		"type":    "command",
@@ -200,10 +202,11 @@ func containsCommand(groups []any, command string) bool {
 	return false
 }
 
-// pruneWirelark removes every Wirelark hook entry from one event except
-// the command named by keep, drops groups left empty, and reports whether
-// anything changed. Hooks belonging to other tools are never touched.
-func pruneWirelark(hooks map[string]any, event, keep string) bool {
+// pruneCompanion removes every Claude Companion hook entry from one event
+// except the command named by keep, drops groups left empty, and reports
+// whether anything changed. Hooks belonging to other tools are never
+// touched.
+func pruneCompanion(hooks map[string]any, event, keep string) bool {
 	groups, ok := hooks[event].([]any)
 	if !ok {
 		return false
@@ -221,7 +224,7 @@ func pruneWirelark(hooks map[string]any, event, keep string) bool {
 		for _, h := range hs {
 			if hook, ok := h.(map[string]any); ok {
 				c, _ := hook["command"].(string)
-				if c != keep && wirelarkCommand.MatchString(c) {
+				if c != keep && companionCommand.MatchString(c) {
 					changed = true
 					continue
 				}

@@ -12,7 +12,7 @@ import (
 // Feishu app-registration link, with the gzipped addons payload that makes
 // it long. If a change pushes this past a terminal's width the feature is
 // broken, so its size is asserted rather than assumed.
-const registrationURL = "https://open.feishu.cn/page/launcher?addons=H4sIAAAAAAAA_2TLQQrDIBCF4bu8dRC69SolhMnkEaRRizO4Ee9eCl0Euvzh-wdUrmsXfRniQHJmQ3xCpR1B1FMtwVs6TzascwE7i9_pgLNI8e-Ucsg0k5OhUZk6t_7AOucC0_rmH48_juUW0ViOTWzbq2Od8zMAZr3Wk6MAAAA&createOnly=true&desc=Claude+Code+notifications+and+session+control+for+%7Buser%7D&from=sdk&name=Wirelark&source=go-sdk%2Fwirelark&tp=sdk&user_code=UKS9-4VQY"
+const registrationURL = "https://open.feishu.cn/page/launcher?addons=H4sIAAAAAAAA_2TLQQrDIBCF4bu8dRC69SolhMnkEaRRizO4Ee9eCl0Euvzh-wdUrmsXfRniQHJmQ3xCpR1B1FMtwVs6TzascwE7i9_pgLNI8e-Ucsg0k5OhUZk6t_7AOucC0_rmH48_juUW0ViOTWzbq2Od8zMAZr3Wk6MAAAA&createOnly=true&desc=Claude+Code+notifications+and+session+control+for+%7Buser%7D&from=sdk&name=Claude+Companion&source=go-sdk%2Fclaude-companion&tp=sdk&user_code=UKS9-4VQY"
 
 func TestRegistrationURLFitsAnEightyColumnTerminal(t *testing.T) {
 	c, err := Encode(registrationURL)
@@ -29,7 +29,7 @@ func TestRegistrationURLFitsAnEightyColumnTerminal(t *testing.T) {
 // mapping still draws something QR-shaped, so comparing against the
 // encoder's own grid is the only check that would catch it.
 func TestRenderMatchesTheModuleGrid(t *testing.T) {
-	const text = "https://example.com/wirelark"
+	const text = "https://example.com/claude-companion"
 	c, err := Encode(text)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
@@ -67,7 +67,7 @@ func TestRenderMatchesTheModuleGrid(t *testing.T) {
 // TestQuietZoneIsLight guards the margin scanners look for: the outermost
 // rows and columns must be unbroken light, or the symbol has no edge.
 func TestQuietZoneIsLight(t *testing.T) {
-	c, err := Encode("https://example.com/wirelark")
+	c, err := Encode("https://example.com/claude-companion")
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestQuietZoneIsLight(t *testing.T) {
 }
 
 func TestRenderColorWrapsEveryLine(t *testing.T) {
-	c, err := Encode("https://example.com/wirelark")
+	c, err := Encode("https://example.com/claude-companion")
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}

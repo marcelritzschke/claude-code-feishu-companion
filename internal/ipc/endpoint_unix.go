@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
 )
 
-// The endpoint is a unix socket in Wirelark's private 0700 directory, mode
+// The endpoint is a unix socket in Claude Companion's private 0700 directory, mode
 // 0600. Filesystem permissions are the whole access control story here: no
 // other user can open it, and nothing off this machine can reach it.
 func endpointPath() (string, error) { return paths.File("daemon.sock") }

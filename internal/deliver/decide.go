@@ -3,9 +3,9 @@ package deliver
 import (
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // walkAwayTime is how long an answer has to take before the user might not
@@ -29,7 +29,7 @@ const (
 // reading. Everything else is reported however briefly it ran.
 //
 // Both escape hatches point the same way, because silence is the one
-// failure mode this product cannot afford: a turn Wirelark could not read,
+// failure mode this product cannot afford: a turn Claude Companion could not read,
 // and a wordless answer long enough to have walked away from, are both
 // reported anyway.
 func WithholdChatter(turn *transcript.Turn) bool {

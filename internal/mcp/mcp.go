@@ -1,4 +1,4 @@
-// Package mcp is the small part of the Model Context Protocol a Wirelark
+// Package mcp is the small part of the Model Context Protocol a Claude Companion
 // channel needs: a JSON-RPC server on stdio that answers the handshake and
 // carries Claude Code's channel extensions.
 //
@@ -24,7 +24,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 )
 
 // ProtocolVersion is the revision this server negotiates. It is

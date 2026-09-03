@@ -1,23 +1,24 @@
 #!/bin/sh
-# Installs wirelark from a GitHub release: detects the OS and architecture,
-# downloads the matching archive, verifies it against the release's
-# checksums.txt, and installs the binary.
+# Installs claude-companion from a GitHub release: detects the OS and
+# architecture, downloads the matching archive, verifies it against the
+# release's checksums.txt, and installs the binary.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/marcelritzschke/wirelark/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 #
 # Env vars:
 #   VERSION      release tag to install, e.g. "v1.2.3" (default: latest)
 #   INSTALL_DIR  where to put the binary (default: "$HOME/.local/bin")
 #
 # This script only reads $HOME and the paths above; it never touches
-# ~/.config/wirelark or ~/.cache/wirelark, and it runs `wirelark` itself
-# only via --version, to confirm the install worked.
+# ~/.config/claude-companion or ~/.cache/claude-companion, and it runs
+# `claude-companion` itself only via --version, to confirm the install worked.
 
 set -eu
 
-repo="marcelritzschke/wirelark"
-name="wirelark"
+repo="marcelritzschke/claude-code-feishu-companion"
+project="claude-code-feishu-companion"
+name="claude-companion"
 
 log() {
 	printf '%s\n' "$*" >&2
@@ -117,17 +118,17 @@ main() {
 
 	install_dir=${INSTALL_DIR:-"$HOME/.local/bin"}
 
-	archive="${name}_${version_num}_${os}_${arch}.tar.gz"
+	archive="${project}_${version_num}_${os}_${arch}.tar.gz"
 	base_url="https://github.com/$repo/releases/download/$version"
 
 	workdir=$(mktemp -d)
 	trap 'rm -rf "$workdir"' EXIT INT TERM
 
-	log "wirelark: downloading $archive ($version)"
+	log "claude-companion: downloading $archive ($version)"
 	fetch_to "$base_url/$archive" "$workdir/$archive"
 	fetch_to "$base_url/checksums.txt" "$workdir/checksums.txt"
 
-	log "wirelark: verifying checksum"
+	log "claude-companion: verifying checksum"
 	sha256_check "$workdir/$archive" "$workdir/checksums.txt" \
 		|| die "checksum verification failed for $archive"
 
@@ -138,7 +139,7 @@ main() {
 	mv "$workdir/$name" "$dest"
 	chmod 755 "$dest"
 
-	log "wirelark: installed to $dest"
+	log "claude-companion: installed to $dest"
 
 	case ":$PATH:" in
 	*":$install_dir:"*) ;;

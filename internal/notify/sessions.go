@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // Caps for the V2 surfaces, in runes. A permission a user is about to
@@ -26,7 +26,7 @@ const (
 // anything but its project and its work.
 func OverviewCard(sessions []session.Session) (string, error) {
 	if len(sessions) == 0 {
-		return card("grey", "Wirelark", "", []string{
+		return card("grey", "Claude Companion", "", []string{
 			"No Claude Code sessions are running on your computer right now.",
 		}, nil, "Start one with `claude`, and it will appear here.")
 	}
@@ -59,7 +59,7 @@ func OverviewCard(sessions []session.Session) (string, error) {
 	if offered == 0 {
 		footer = "None of these sessions can be continued from here."
 	}
-	return card("blue", "Wirelark", "Your local Claude sessions", bodies, buttons, footer)
+	return card("blue", "Claude Companion", "Your local Claude sessions", bodies, buttons, footer)
 }
 
 // overviewRow is one session as the overview reads it: a state anyone can
@@ -86,7 +86,7 @@ func SelectedCard(s session.Session) (string, error) {
 	bodies := []string{sessionIdentity(s)}
 	footer := "Send a message here to continue this Claude session."
 	if !s.Remote.Continuable() {
-		footer = "This session was not started with Wirelark enabled, so it can only send you notifications."
+		footer = "This session was not started with Claude Companion enabled, so it can only send you notifications."
 	}
 
 	// Watching needs no channel - it only reads what the session's hooks
@@ -219,7 +219,7 @@ func stateWord(st session.State) string {
 }
 
 // remoteWord says what the user can do with a session, in their terms. A
-// session Wirelark cannot reach is not broken - it just does less.
+// session Claude Companion cannot reach is not broken - it just does less.
 func remoteWord(r session.Remote) string {
 	switch r {
 	case session.Ready:

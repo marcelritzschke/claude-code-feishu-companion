@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/pathdisp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
 )
 
 // Turn is the distilled view of one Claude Code turn: one user prompt and
@@ -191,7 +191,7 @@ func Load(path, promptID string) *Turn {
 					toolUses = append(toolUses, toolUse{index: idx, item: item})
 				case "text":
 					// Only "text" blocks. A "thinking" block is reasoning,
-					// which no Wirelark surface ever shows.
+					// which no Claude Companion surface ever shows.
 					if t := strings.TrimSpace(item.Text); t != "" {
 						prose = append(prose, t)
 					}

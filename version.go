@@ -25,7 +25,7 @@ type versionInfo struct {
 func printVersion() {
 	build, _ := debug.ReadBuildInfo()
 	info := resolveVersionInfo(version, commit, date, build)
-	fmt.Printf("wirelark %s (commit %s, built %s)\n", info.version, info.commit, info.date)
+	fmt.Printf("claude-companion %s (commit %s, built %s)\n", info.version, info.commit, info.date)
 }
 
 // resolveVersionInfo preserves release metadata injected by GoReleaser. A

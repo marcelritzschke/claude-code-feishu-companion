@@ -8,7 +8,7 @@ import (
 )
 
 // fixture mirrors a real user settings.json: an existing unrelated hook
-// plus settings Wirelark must not touch.
+// plus settings Claude Companion must not touch.
 const fixture = `{
   "model": "sonnet",
   "hooks": {
@@ -32,8 +32,9 @@ const fixture = `{
   "theme": "dark"
 }`
 
-// legacyFixture is a settings.json written by an older Wirelark: the three
-// events V1 no longer notifies on.
+// legacyFixture is a settings.json written by an older, pre-rename install
+// (back when the binary was named wirelark): the three events V1 no longer
+// notifies on.
 const legacyFixture = `{
   "hooks": {
     "Notification": [
@@ -96,7 +97,7 @@ func groupCommands(t *testing.T, m map[string]any, event string) []string {
 
 func TestRegisterPreservesExisting(t *testing.T) {
 	p := writeFixture(t, fixture)
-	changed, err := Register(p, "/usr/local/bin/wirelark send", Settings{Progress: true, Remote: true})
+	changed, err := Register(p, "/usr/local/bin/claude-companion send", Settings{Progress: true, Remote: true})
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -108,11 +109,11 @@ func TestRegisterPreservesExisting(t *testing.T) {
 	if m["statusLine"] == nil {
 		t.Error("statusLine lost")
 	}
-	// Wirelark registers on SessionStart too, and another tool's hook on
+	// Claude Companion registers on SessionStart too, and another tool's hook on
 	// the same event is left exactly where it was.
 	cmds := groupCommands(t, m, "SessionStart")
 	if len(cmds) != 2 {
-		t.Fatalf("SessionStart commands = %v, want the existing hook plus Wirelark's", cmds)
+		t.Fatalf("SessionStart commands = %v, want the existing hook plus Claude Companion's", cmds)
 	}
 	if cmds[0] != "bash '/home/u/.claude/hooks/herdr-agent-state.sh' session" {
 		t.Errorf("SessionStart commands = %v, want the existing hook untouched and first", cmds)
@@ -122,9 +123,9 @@ func TestRegisterPreservesExisting(t *testing.T) {
 	}
 }
 
-func TestRegisterWirelarkEvents(t *testing.T) {
+func TestRegisterCompanionEvents(t *testing.T) {
 	p := writeFixture(t, "{}")
-	if _, err := Register(p, "/bin/wirelark send", Settings{Progress: true, Remote: true}); err != nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
 	m := load(t, p)
@@ -152,7 +153,7 @@ func TestRegisterWirelarkEvents(t *testing.T) {
 			t.Errorf("%s matcher = %q, want %q", want.event, got, want.matcher)
 		}
 		h := g["hooks"].([]any)[0].(map[string]any)
-		if h["command"] != "/bin/wirelark send" {
+		if h["command"] != "/bin/claude-companion send" {
 			t.Errorf("%s command = %v", want.event, h["command"])
 		}
 		if h["async"] != true {
@@ -166,7 +167,7 @@ func TestRegisterWirelarkEvents(t *testing.T) {
 
 func TestRegisterPrunesLegacyEvents(t *testing.T) {
 	p := writeFixture(t, legacyFixture)
-	if _, err := Register(p, "/bin/wirelark send", Settings{Progress: true, Remote: true}); err != nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
 	m := load(t, p)
@@ -182,7 +183,7 @@ func TestRegisterPrunesLegacyEvents(t *testing.T) {
 
 func TestRegisterIdempotent(t *testing.T) {
 	p := writeFixture(t, fixture)
-	cmd := "/bin/wirelark send"
+	cmd := "/bin/claude-companion send"
 	if _, err := Register(p, cmd, Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +204,7 @@ func TestRegisterIdempotent(t *testing.T) {
 
 func TestRegisterCreatesMissingFile(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
-	changed, err := Register(p, "/bin/wirelark send", Settings{Progress: true, Remote: true})
+	changed, err := Register(p, "/bin/claude-companion send", Settings{Progress: true, Remote: true})
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -216,7 +217,7 @@ func TestRegisterCreatesMissingFile(t *testing.T) {
 
 func TestRegisterBackupWritten(t *testing.T) {
 	p := writeFixture(t, fixture)
-	if _, err := Register(p, "/bin/wirelark send", Settings{Progress: true, Remote: true}); err != nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
 	matches, _ := filepath.Glob(p + ".bak.*")
@@ -231,7 +232,7 @@ func TestRegisterBackupWritten(t *testing.T) {
 
 func TestRegisterMalformedRejected(t *testing.T) {
 	p := writeFixture(t, "{broken")
-	if _, err := Register(p, "/bin/wirelark send", Settings{Progress: true, Remote: true}); err == nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: true, Remote: true}); err == nil {
 		t.Error("malformed settings must be rejected")
 	}
 	// And the file must be untouched.
@@ -241,8 +242,9 @@ func TestRegisterMalformedRejected(t *testing.T) {
 	}
 }
 
-// relocatedFixture is a settings.json left by a Wirelark that lived at a
-// different path, next to an unrelated hook that must survive.
+// relocatedFixture is a settings.json left by a Claude Companion install
+// (under its former name, wirelark) that lived at a different path, next
+// to an unrelated hook that must survive.
 const relocatedFixture = `{
   "hooks": {
     "Stop": [
@@ -263,7 +265,7 @@ func TestRegisterReplacesRelocatedInstall(t *testing.T) {
 	}
 	m := load(t, p)
 
-	// Exactly one Wirelark hook per event, at the new path, and the
+	// Exactly one Claude Companion hook per event, at the new path, and the
 	// unrelated hook untouched.
 	stop := groupCommands(t, m, "Stop")
 	if len(stop) != 2 {
@@ -289,11 +291,12 @@ func TestRegisterReplacesRelocatedInstall(t *testing.T) {
 }
 
 // PostToolUse fires on every tool call. Registering it at the default
-// notification level would spawn a Wirelark process per call with nothing
-// to say, so it is only registered when progress updates are switched on.
+// notification level would spawn a Claude Companion process per call with
+// nothing to say, so it is only registered when progress updates are
+// switched on.
 func TestRegisterPostToolUseOnlyWithProgress(t *testing.T) {
 	p := writeFixture(t, "{}")
-	if _, err := Register(p, "/bin/wirelark send", Settings{Progress: false, Remote: true}); err != nil {
+	if _, err := Register(p, "/bin/claude-companion send", Settings{Progress: false, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
 	hooks := hooksOf(t, load(t, p))
@@ -309,7 +312,7 @@ func TestRegisterPostToolUseOnlyWithProgress(t *testing.T) {
 
 func TestRegisterTurningProgressOffRemovesPostToolUse(t *testing.T) {
 	p := writeFixture(t, "{}")
-	cmd := "/bin/wirelark send"
+	cmd := "/bin/claude-companion send"
 	if _, err := Register(p, cmd, Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -328,28 +331,35 @@ func TestRegisterTurningProgressOffRemovesPostToolUse(t *testing.T) {
 	}
 }
 
-func TestWirelarkCommandRecognition(t *testing.T) {
+func TestCompanionCommandRecognition(t *testing.T) {
 	yes := []string{
+		"/bin/claude-companion send",
+		`"/home/u/go/bin/claude-companion" send`,
+		`C:	ools\claude-companion.exe send`,
+		"claude-companion send",
+		"/usr/local/bin/claude-companion send --dry-run",
 		"/bin/wirelark send",
 		`"/home/u/go/bin/wirelark" send`,
 		`C:	ools\wirelark.exe send`,
 		"wirelark send",
-		"/usr/local/bin/wirelark send --dry-run",
 	}
 	for _, c := range yes {
-		if !wirelarkCommand.MatchString(c) {
-			t.Errorf("should be recognised as Wirelark: %q", c)
+		if !companionCommand.MatchString(c) {
+			t.Errorf("should be recognised as Claude Companion: %q", c)
 		}
 	}
 	no := []string{
 		"bash '/home/u/.claude/hooks/herdr-agent-state.sh' session",
+		"/opt/not-claude-companion send",
+		"/bin/claude-companion init",
+		"echo claude-companion",
 		"/opt/not-wirelark send",
 		"/bin/wirelark init",
 		"echo wirelark",
 	}
 	for _, c := range no {
-		if wirelarkCommand.MatchString(c) {
-			t.Errorf("should not be recognised as Wirelark: %q", c)
+		if companionCommand.MatchString(c) {
+			t.Errorf("should not be recognised as Claude Companion: %q", c)
 		}
 	}
 }
@@ -359,7 +369,7 @@ func TestWirelarkCommandRecognition(t *testing.T) {
 // and re-running init after switching it off must take them away again.
 func TestRemoteOffLeavesNoLifecycleHooks(t *testing.T) {
 	p := writeFixture(t, "{}")
-	cmd := "/bin/wirelark send"
+	cmd := "/bin/claude-companion send"
 	if _, err := Register(p, cmd, Settings{Remote: true}); err != nil {
 		t.Fatal(err)
 	}

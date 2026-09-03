@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/paths"
-	"github.com/marcelritzschke/wirelark/internal/secfile"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
 // Windows has no unix sockets, so the endpoint is a loopback port. A port is

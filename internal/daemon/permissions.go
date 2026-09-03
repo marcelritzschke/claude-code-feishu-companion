@@ -3,18 +3,18 @@ package daemon
 import (
 	"context"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // onPermissionRequest puts a relayed tool approval in front of the user
 // with the two answers Claude Code will accept.
 //
 // The local dialog is open the whole time and either answer ends it. That
-// is the shape of the feature: Wirelark adds a second place to answer from,
+// is the shape of the feature: Claude Companion adds a second place to answer from,
 // it does not move the decision off the computer.
 func (d *Daemon) onPermissionRequest(ctx context.Context, link session.Channel, req mcp.PermissionRequest) {
 	if !d.cfg.RemotePermissionsEnabled() {
@@ -96,7 +96,7 @@ func (d *Daemon) answerPermission(ctx context.Context, act notify.Action, messag
 
 	if err := d.verdictTo(p.sessionID, act.Request, act.Verdict); err != nil {
 		debuglog.Printf("answer permission %s: %v", act.Request, err)
-		d.say(ctx, "Wirelark could not reach that session to pass on your answer. Please answer in Claude Code.")
+		d.say(ctx, "Claude Companion could not reach that session to pass on your answer. Please answer in Claude Code.")
 		return
 	}
 	debuglog.Printf("permission %s answered %s", act.Request, act.Verdict)

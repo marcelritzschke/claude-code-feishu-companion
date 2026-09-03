@@ -59,7 +59,7 @@ func interactive() (*input, error) {
 	inputOnce.Do(func() {
 		fd := int(os.Stdin.Fd())
 		if !term.IsTerminal(fd) {
-			inputErr = fmt.Errorf("wirelark init needs a terminal to ask questions in")
+			inputErr = fmt.Errorf("claude-companion init needs a terminal to ask questions in")
 			return
 		}
 		state, err := term.MakeRaw(fd)

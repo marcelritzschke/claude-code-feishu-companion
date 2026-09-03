@@ -7,13 +7,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/daemon"
-	"github.com/marcelritzschke/wirelark/internal/deliver"
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/deliver"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // maxPayloadBytes bounds stdin so a runaway hook payload cannot OOM the

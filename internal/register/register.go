@@ -1,11 +1,11 @@
-// Package register creates the Feishu app Wirelark talks through, by
-// showing a QR code and letting the person who scans it approve what
-// Wirelark is asking for.
+// Package register creates the Feishu app Claude Companion talks through,
+// by showing a QR code and letting the person who scans it approve what
+// Claude Companion is asking for.
 //
 // The alternative it replaces is a developer console: create a self-built
 // app, tick eight boxes across four pages, publish a version, then copy an
-// id and a secret into a terminal. That is a developer's task, and
-// Wirelark is not a developer tool. The registration flow moves the same
+// id and a secret into a terminal. That is a developer's task, and Claude
+// Companion is not a developer tool. The registration flow moves the same
 // decisions to a permission sheet on the user's phone, where they are
 // stated in the platform's own words and answered with one tap.
 //
@@ -25,10 +25,10 @@ import (
 
 	"github.com/larksuite/oapi-sdk-go/v3/scene/registration"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 )
 
-// Requirements is everything Wirelark needs a Feishu app to grant, in the
+// Requirements is everything Claude Companion needs a Feishu app to grant, in the
 // platform's own vocabulary.
 //
 // One list, used twice: the registration asks for exactly this, and the
@@ -41,7 +41,7 @@ type Requirements struct {
 	// user sends back.
 	Scopes []string
 	// Events are the subscriptions that open the return path. Without
-	// this one Wirelark can talk but never listen.
+	// this one Claude Companion can talk but never listen.
 	Events []string
 	// Callbacks are what make a card's buttons work. Cards send fine
 	// without it, which is why it is the easiest thing to leave out by
@@ -49,7 +49,7 @@ type Requirements struct {
 	Callbacks []string
 }
 
-// Needs returns what Wirelark asks a Feishu app for.
+// Needs returns what Claude Companion asks a Feishu app for.
 func Needs() Requirements {
 	return Requirements{
 		Scopes:    []string{"im:message", "im:message:send_as_bot"},
@@ -58,13 +58,13 @@ func Needs() Requirements {
 	}
 }
 
-// Result is a completed registration: the credentials Wirelark will use,
+// Result is a completed registration: the credentials Claude Companion will use,
 // and the account that approved them.
 type Result struct {
 	AppID     string
 	AppSecret string
 	// OwnerOpenID identifies the person who scanned. They approved the
-	// app, so they are the one account Wirelark answers to - which is the
+	// app, so they are the one account Claude Companion answers to - which is the
 	// question the old setup had to ask for as an email address.
 	OwnerOpenID string
 	// Brand is the deployment the registration happened in. Feishu
@@ -88,12 +88,12 @@ type Result struct {
 // guarantee: Feishu decides most of the URL, and a byte more from its end
 // puts the symbol back up a version. Nothing breaks if it does.
 const (
-	appName        = "Wirelark"
+	appName        = "Claude Companion"
 	appDescription = "Claude Code on your phone"
 )
 
-// source identifies Wirelark in Feishu's own registration telemetry.
-const source = "wirelark"
+// source identifies Claude Companion in Feishu's own registration telemetry.
+const source = "claude-companion"
 
 // Events are the moments a caller may want to show. Registration is a
 // wait with two visible states - here is the code, and it has not been
@@ -117,7 +117,7 @@ func Run(ctx context.Context, ev Events) (*Result, error) {
 	var result *registration.RegisterAppResult
 
 	// The SDK writes a stray progress line to os.Stdout in the middle of
-	// this call; see quietly. Everything Wirelark itself prints goes to
+	// this call; see quietly. Everything Claude Companion itself prints goes to
 	// out, which is captured before the swap and so is unaffected.
 	err := quietly(func() error {
 		var err error
@@ -179,15 +179,15 @@ func explain(err error) error {
 	if errors.As(err, &denied) {
 		return errors.New("the registration was declined in Feishu.\n" +
 			"If you did not decline it yourself, your Feishu administrator may not\n" +
-			"allow members to create apps. Ask them to create one for Wirelark and\n" +
-			"re-run  wirelark init  with the existing-app option")
+			"allow members to create apps. Ask them to create one for Claude\n" +
+			"Companion and re-run  claude-companion init  with the existing-app option")
 	}
 	var expired *registration.ExpiredError
 	if errors.As(err, &expired) {
-		return errors.New("the QR code expired before it was scanned; re-run  wirelark init  for a new one")
+		return errors.New("the QR code expired before it was scanned; re-run  claude-companion init  for a new one")
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return errors.New("setup stopped waiting for the scan; re-run  wirelark init  for a new code")
+		return errors.New("setup stopped waiting for the scan; re-run  claude-companion init  for a new code")
 	}
 	var regErr *registration.RegisterAppError
 	if errors.As(err, &regErr) {

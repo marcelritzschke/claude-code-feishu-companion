@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
-	"github.com/marcelritzschke/wirelark/internal/paths"
-	"github.com/marcelritzschke/wirelark/internal/secfile"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/paths"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
 // snapshotFile keeps the registry across a daemon restart, so the overview
@@ -80,7 +80,7 @@ func (r *Registry) Observe(o Observation) Session {
 }
 
 // Attach records that a channel connected for a session, which is both how
-// a session becomes continuable and how Wirelark learns it is alive.
+// a session becomes continuable and how Claude Companion learns it is alive.
 func (r *Registry) Attach(id string, pid int, dir string, remote Remote, ch Channel) Session {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -140,7 +140,7 @@ func (r *Registry) Remove(id string) {
 	r.clearSelectionOf(id)
 }
 
-// Downgrade records that a session did not accept a message Wirelark sent
+// Downgrade records that a session did not accept a message Claude Companion sent
 // it, so the overview stops claiming it can be continued.
 func (r *Registry) Downgrade(id string) {
 	r.mu.Lock()

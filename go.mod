@@ -1,4 +1,4 @@
-module github.com/marcelritzschke/wirelark
+module github.com/marcelritzschke/claude-code-feishu-companion
 
 go 1.27.0
 

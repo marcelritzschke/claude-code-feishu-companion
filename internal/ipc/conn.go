@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/debuglog"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 )
 
 // maxLineBytes bounds one message. Hook payloads are a few KB; a channel

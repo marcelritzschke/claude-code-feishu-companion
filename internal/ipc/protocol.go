@@ -1,4 +1,4 @@
-// Package ipc is the private local link between the Wirelark roles: the
+// Package ipc is the private local link between the Claude Companion roles: the
 // daemon that owns the Feishu connection, the channels attached to running
 // Claude Code sessions, and the one-shot hook processes.
 //
@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // Message types. The name says who is talking to whom, because the same

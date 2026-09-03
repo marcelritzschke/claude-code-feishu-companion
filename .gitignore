@@ -1,2 +1,2 @@
-# Built by "go build -o wirelark ." per the README.
-/wirelark
+# Built by "go build -o claude-companion ." per the README.
+/claude-companion

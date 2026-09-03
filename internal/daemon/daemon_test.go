@@ -8,13 +8,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/marcelritzschke/wirelark/internal/config"
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/ipc"
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // recorder stands in for Feishu: it keeps what the user would have seen.
@@ -117,7 +117,7 @@ func (l *link) sent() []string {
 // fixture builds a daemon with one attached session, wired to a recorder.
 func fixture(t *testing.T, remote session.Remote) (*Daemon, *recorder, *link) {
 	t.Helper()
-	t.Setenv("WIRELARK_STATE_DIR", t.TempDir())
+	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
 	rec := newRecorder()
 	d := New(&config.Config{
 		Notify: config.NotifyImportant, Detail: config.DetailNormal,
@@ -183,7 +183,7 @@ func TestMessageWithoutASelectionGoesNowhere(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Fatalf("the session received %v with nothing selected", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Wirelark" {
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
 		t.Errorf("cards = %v, want the overview so the user can pick", titles)
 	}
 }
@@ -204,12 +204,12 @@ func TestMessageAfterTheSelectedSessionEndedGoesNowhere(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Fatalf("the ended session received %v", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Wirelark" {
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
 		t.Errorf("cards = %v, want the overview", titles)
 	}
 }
 
-// A session Wirelark cannot reach is told about honestly rather than being
+// A session Claude Companion cannot reach is told about honestly rather than being
 // sent a message that would vanish.
 func TestNotificationsOnlySessionRefusesHonestly(t *testing.T) {
 	d, rec, l := fixture(t, session.Notifications)
@@ -249,7 +249,7 @@ func TestOverviewIsShownOnRequest(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Errorf("asking for the overview was sent to a session: %v", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Wirelark" {
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
 		t.Errorf("cards = %v, want the overview", titles)
 	}
 }

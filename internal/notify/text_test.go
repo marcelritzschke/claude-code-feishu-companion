@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/transcript"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 func TestTruncateRunes(t *testing.T) {

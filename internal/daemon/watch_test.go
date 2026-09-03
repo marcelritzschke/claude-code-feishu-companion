@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/wirelark/internal/feishu"
-	"github.com/marcelritzschke/wirelark/internal/hook"
-	"github.com/marcelritzschke/wirelark/internal/notify"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // turnPrompt is a turn in flight: a prompt, a word about what Claude is
@@ -192,7 +192,7 @@ func TestWatchingAnIdleSessionShowsTheLastOutcome(t *testing.T) {
 	}
 }
 
-// A session Wirelark has only heard from over its channel cannot be shown,
+// A session Claude Companion has only heard from over its channel cannot be shown,
 // and saying so beats a card that would sit there empty.
 func TestUnwatchableSessionIsHonest(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
@@ -219,12 +219,12 @@ func TestWatchWithoutASelectionAsksFirst(t *testing.T) {
 	if d.watching("sess-1") {
 		t.Error("no session was selected; nothing should be watched")
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Wirelark" {
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
 		t.Errorf("cards = %v, want the overview so the user can pick", titles)
 	}
 }
 
-// "watch" is a Wirelark command only when it is the whole message.
+// "watch" is a Claude Companion command only when it is the whole message.
 func TestWatchIsNotStolenFromAnInstruction(t *testing.T) {
 	d, _, l := fixture(t, session.Ready)
 	watchable(t, d)
@@ -236,7 +236,7 @@ func TestWatchIsNotStolenFromAnInstruction(t *testing.T) {
 		t.Fatalf("session received %v, want the instruction", got)
 	}
 	if d.watching("sess-1") {
-		t.Error("an instruction was mistaken for a Wirelark command")
+		t.Error("an instruction was mistaken for a Claude Companion command")
 	}
 }
 

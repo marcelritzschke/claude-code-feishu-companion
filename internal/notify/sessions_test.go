@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcelritzschke/wirelark/internal/mcp"
-	"github.com/marcelritzschke/wirelark/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
 // buttonsOf returns the label and value of every button on a card.
@@ -43,7 +43,7 @@ func TestOverviewCard(t *testing.T) {
 	sessions := []session.Session{
 		{ID: "s1", Dir: "/work/frontend", Title: "Upgrade React", State: session.Waiting, Remote: session.Ready},
 		{ID: "s2", Dir: "/work/payments-api", Title: "Fix token refresh", State: session.Working, Remote: session.Ready},
-		{ID: "s3", Dir: "/work/wirelark", State: session.Idle, Remote: session.Notifications},
+		{ID: "s3", Dir: "/work/claude-companion", State: session.Idle, Remote: session.Notifications},
 	}
 	card, err := OverviewCard(sessions)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestOverviewCard(t *testing.T) {
 	}
 
 	for _, want := range []string{"frontend", "Upgrade React", "Waiting for you", "Remote ready",
-		"payments-api", "Working", "wirelark", "Idle", "Notifications only"} {
+		"payments-api", "Working", "claude-companion", "Idle", "Notifications only"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("overview is missing %q: %s", want, card)
 		}
@@ -75,7 +75,7 @@ func TestOverviewCard(t *testing.T) {
 	if !strings.Contains(card, "1. frontend") || !strings.Contains(card, "2. payments-api") {
 		t.Errorf("continuable sessions are not numbered for a typed reply: %s", card)
 	}
-	if strings.Contains(card, "3. wirelark") {
+	if strings.Contains(card, "3. claude-companion") {
 		t.Errorf("a session that cannot be continued was given a number: %s", card)
 	}
 	if !strings.Contains(card, "reply with its number") {
@@ -83,7 +83,7 @@ func TestOverviewCard(t *testing.T) {
 	}
 }
 
-// The overview must never leak the identifiers Wirelark works with.
+// The overview must never leak the identifiers Claude Companion works with.
 func TestOverviewShowsNoTechnicalIdentifiers(t *testing.T) {
 	card, err := OverviewCard([]session.Session{
 		{ID: "0198c0de-cafe-7000-a1b2-0123456789ab", PID: 4242,
@@ -145,7 +145,7 @@ func TestSelectedCardSaysWhereMessagesGo(t *testing.T) {
 
 func TestSelectedCardIsHonestAboutUnreachableSessions(t *testing.T) {
 	card, err := SelectedCard(session.Session{
-		ID: "s1", Dir: "/work/wirelark", State: session.Idle, Remote: session.Notifications,
+		ID: "s1", Dir: "/work/claude-companion", State: session.Idle, Remote: session.Notifications,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +291,7 @@ func TestParseAction(t *testing.T) {
 		t.Errorf("ParseAction = %+v, %v", got, ok)
 	}
 	if _, ok := ParseAction([]byte(`{"unrelated":"payload"}`)); ok {
-		t.Error("a value that is not a Wirelark action was accepted as one")
+		t.Error("a value that is not a Claude Companion action was accepted as one")
 	}
 	if _, ok := ParseAction([]byte(`not json`)); ok {
 		t.Error("undecodable card values must not parse")

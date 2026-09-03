@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,7 +33,16 @@ func TestWorkOpensTheSessionCardAutomatically(t *testing.T) {
 	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
 		t.Fatalf("cards = %v, want the session card and nothing else", titles)
 	}
-	if !strings.Contains(rec.cards[0], "Interrupt") {
+	// Windows cannot deliver an interrupt to another console's process, so
+	// interrupt_windows.go turns Interruptible() off there rather than
+	// offering a control that would not work: see
+	// TestNotificationOnlySessionCardOffersNoControl for the same honesty
+	// principle applied to a session Claude Companion cannot reach at all.
+	if runtime.GOOS == "windows" {
+		if strings.Contains(rec.cards[0], "Interrupt") {
+			t.Errorf("Windows cannot offer Interrupt: %s", rec.cards[0])
+		}
+	} else if !strings.Contains(rec.cards[0], "Interrupt") {
 		t.Errorf("a controllable working session offers [ Interrupt ]: %s", rec.cards[0])
 	}
 }
@@ -182,6 +192,9 @@ func TestCompletionWithoutASessionCardDoesNotPing(t *testing.T) {
 // Interrupt stops the turn and nothing else: the session stays, selected
 // or not, and its card says honestly what happened.
 func TestInterruptButtonStopsTheTurn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("interrupt is not offered on Windows: see interrupt_windows.go")
+	}
 	d, rec, _ := fixture(t, session.Ready)
 	path := watchable(t, d)
 
@@ -226,6 +239,9 @@ func TestInterruptButtonStopsTheTurn(t *testing.T) {
 }
 
 func TestInterruptFailureIsToldHonestly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("interrupt is not offered on Windows, so d.interrupt is never reached: see interrupt_windows.go")
+	}
 	d, rec, _ := fixture(t, session.Ready)
 	path := watchable(t, d)
 	d.interrupt = func(session.Session) error { return errors.New("no such process") }
@@ -250,6 +266,9 @@ func TestInterruptFailureIsToldHonestly(t *testing.T) {
 // A typed "interrupt" is the same contract as the button, because buttons
 // can be silently inert when card callbacks are not configured.
 func TestTypedInterruptReachesTheSelectedSession(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("interrupt is not offered on Windows: see interrupt_windows.go")
+	}
 	d, _, _ := fixture(t, session.Ready)
 	watchable(t, d)
 	selectSession(t, d, "sess-1")

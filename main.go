@@ -59,6 +59,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
 			os.Exit(1)
 		}
+	case "update":
+		os.Exit(runUpdate())
 	case "-h", "--help", "help":
 		usage()
 	case "-v", "--version", "version":
@@ -78,6 +80,7 @@ func usage() {
   claude-companion daemon [--stop|--status]
                               run the bridge (started automatically when needed)
   claude-companion version            print the version
+  claude-companion update             check GitHub for a newer release
 `)
 }
 
@@ -113,9 +116,12 @@ func runDaemon(args []string) error {
 		case "--status", "-status":
 			if ipc.Ping(daemonProbeTimeout) {
 				fmt.Println("claude-companion daemon is running")
-				return nil
+			} else {
+				fmt.Println("claude-companion daemon is not running")
 			}
-			fmt.Println("claude-companion daemon is not running")
+			if notice := updateNotice(currentVersion()); notice != "" {
+				fmt.Println(notice)
+			}
 			return nil
 		default:
 			return fmt.Errorf("unknown option %q", a)
@@ -124,5 +130,5 @@ func runDaemon(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return daemon.Run(ctx)
+	return daemon.Run(ctx, currentVersion())
 }

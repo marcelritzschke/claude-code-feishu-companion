@@ -135,7 +135,7 @@ func fixture(t *testing.T, remote session.Remote) (*Daemon, *recorder, *link) {
 	d := New(&config.Config{
 		Notify: config.NotifyImportant, Detail: config.DetailNormal,
 		Remote: config.On, RemotePermissions: config.On,
-	}, rec, nil)
+	}, rec, nil, "1.0.0")
 	l := &link{}
 	d.reg.Attach("sess-1", 4242, "/work/payments-api", remote, l)
 	d.reg.Observe(session.Observation{ID: "sess-1", PID: 4242, Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: hook.EventStop})

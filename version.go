@@ -26,6 +26,17 @@ func printVersion() {
 	build, _ := debug.ReadBuildInfo()
 	info := resolveVersionInfo(version, commit, date, build)
 	fmt.Printf("claude-companion %s (commit %s, built %s)\n", info.version, info.commit, info.date)
+	if notice := updateNotice(info.version); notice != "" {
+		fmt.Println(notice)
+	}
+}
+
+// currentVersion resolves this binary's own version the same way
+// printVersion does, for anything that needs to compare against it - such
+// as an update check.
+func currentVersion() string {
+	build, _ := debug.ReadBuildInfo()
+	return resolveVersionInfo(version, commit, date, build).version
 }
 
 // resolveVersionInfo preserves release metadata injected by GoReleaser. A

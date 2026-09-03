@@ -23,6 +23,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/update"
 )
 
 // snapshotEvery is how often the registry is written out, so a daemon that
@@ -56,6 +57,13 @@ type Daemon struct {
 	// interrupt delivers a turn interrupt to a session. It is a field so
 	// tests can interrupt without signalling a real process.
 	interrupt func(session.Session) error
+
+	// version is the running binary's own version, "dev" if unlinked. It
+	// is what checkForUpdate compares GitHub's latest release against.
+	version string
+	// fetchRelease fetches the latest release. A field so tests can stand
+	// in for GitHub.
+	fetchRelease func(context.Context) (update.Release, error)
 
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
@@ -109,8 +117,9 @@ type delivery struct {
 
 // Run starts the daemon and blocks until it is stopped or ctx ends. Only
 // one daemon may run at a time; a second one exits with ErrAlreadyRunning
-// rather than competing for the socket.
-func Run(ctx context.Context) error {
+// rather than competing for the socket. version identifies the running
+// binary, "dev" if it carries no linked version.
+func Run(ctx context.Context, version string) error {
 	lock, err := acquire()
 	if err != nil {
 		return err
@@ -134,7 +143,7 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	d := New(cfg, out, nil)
+	d := New(cfg, out, nil, version)
 	if cfg.RemoteEnabled() {
 		d.in = feishu.NewInbound(cfg)
 	}
@@ -143,19 +152,21 @@ func Run(ctx context.Context) error {
 
 // New builds a daemon around an already-made Feishu side, which is what
 // lets a test drive the whole thing without an account.
-func New(cfg *config.Config, out sender, in inbound) *Daemon {
+func New(cfg *config.Config, out sender, in inbound, version string) *Daemon {
 	return &Daemon{
-		cfg:       cfg,
-		out:       out,
-		in:        in,
-		reg:       session.Load(),
-		byRequest: map[string]*prompt{},
-		bySession: map[string]*prompt{},
-		awaiting:  map[string]*delivery{},
-		watches:   map[string]*watch{},
-		pace:      defaultPace,
-		interrupt: func(s session.Session) error { return s.Interrupt() },
-		stop:      make(chan struct{}),
+		cfg:          cfg,
+		out:          out,
+		in:           in,
+		reg:          session.Load(),
+		byRequest:    map[string]*prompt{},
+		bySession:    map[string]*prompt{},
+		awaiting:     map[string]*delivery{},
+		watches:      map[string]*watch{},
+		pace:         defaultPace,
+		interrupt:    func(s session.Session) error { return s.Interrupt() },
+		version:      version,
+		fetchRelease: update.Fetch,
+		stop:         make(chan struct{}),
 	}
 }
 
@@ -177,9 +188,10 @@ func (d *Daemon) Serve(ctx context.Context) error {
 		go func() { defer wg.Done(); d.runInbound(ctx) }()
 		go func() { defer wg.Done(); d.readInbound(ctx) }()
 	}
-	wg.Add(2)
+	wg.Add(3)
 	go func() { defer wg.Done(); d.acceptLoop(ctx, listener) }()
 	go func() { defer wg.Done(); d.housekeep(ctx) }()
+	go func() { defer wg.Done(); d.watchForUpdates(ctx) }()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)

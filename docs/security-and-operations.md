@@ -54,6 +54,12 @@ session is watched, Claude Companion re-reads its transcript locally every
 few seconds and rewrites one existing card; it does not send a message per
 action, and it never sends model reasoning.
 
+The daemon also checks GitHub for a newer stable release at startup and
+every 24 hours, and sends one plain-text Feishu message the first time it
+finds a version newer than the one running - never more than once per
+version. This check is outbound-only: the request carries no session data,
+just an anonymous read of the project's public release list.
+
 Inbound messages and card actions are accepted only from the configured owner.
 Remote permission approval is nevertheless a real grant of authority: anyone
 with access to that Feishu identity could approve a command. Remote approvals
@@ -71,7 +77,8 @@ which uses mode `0600`.
 
 Runtime state lives under `~/.cache/claude-companion`, kept private with
 mode `0700`. It includes the cached tenant token, progress-card bookkeeping,
-session snapshot, daemon endpoint, and debug log.
+session snapshot, daemon endpoint, debug log, and the update check's cache
+(the latest version last seen on GitHub, and the version last announced).
 
 On Unix, processes communicate over a local socket accessible only to the
 user. Windows uses a loopback port guarded by a secret in a `0600` file because
@@ -106,6 +113,12 @@ Check or stop the daemon:
 ```sh
 claude-companion daemon --status
 claude-companion daemon --stop
+```
+
+Force a live update check, independent of the daemon's cache or schedule:
+
+```sh
+claude-companion update
 ```
 
 Render a notification without a configuration file or Feishu connection:

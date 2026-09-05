@@ -104,9 +104,6 @@ brand = "feishu"             # use "lark" for open.larksuite.com
 notify = "important"            # attention, failures, completion
 # notify = "important+progress" # also update long-running progress
 
-detail = "normal"               # summary, validation, answer excerpt
-# detail = "compact"            # shorter completion cards
-
 remote = "on"                   # "off" makes it notification-only
 remote_permissions = "on"       # configured separately from continuation
 ```

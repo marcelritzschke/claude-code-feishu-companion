@@ -1107,13 +1107,15 @@ It should not answer:
 
 **# V3 live updates**
 
+\> **Superseded in part.** The activity list is no longer kept short by
+\> discarding steps. Feishu's card schema 2.0 can fold, so the card carries
+\> every step of the turn with almost all of it collapsed. See
+\> `New Feishu Experience.md`, which is the current authority on card
+\> behavior; what follows is the shape this was designed from.
+
 The same card updates in place.
 
 Claude Companion should not send a new Feishu message for every action.
-
-Recent activity should remain short.
-
-Three to five meaningful items is enough.
 
 Examples:
 

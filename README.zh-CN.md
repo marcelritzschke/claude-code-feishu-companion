@@ -68,24 +68,27 @@ Idle · Notifications only
 回复 `watch`，就会有一张卡片跟随这个会话：
 
 ```text
-🟢 Claude is working
-Fix token refresh · payments-api · 6m 12s
+🟢 Working · 6m 12s
+Fix token refresh · payments-api
 
 Current progress
 Found duplicate refresh validation. Consolidating
 the logic and checking the callers.
 
-Recent activity
+Activity
 ✓ Read 2 files
 ✓ Updated refresh.go
-◌ Running go test ./...
 
-Updated just now
+▸ ◌ Running go test ./...
+
+Activity just now
+[ Interrupt ]
 ```
 
 这张卡片原地更新——不会每个动作发一条消息，也不会展示原始日志或模型推理——
-并在这一轮结束时收敛为常规的完成卡片。实时视图不需要额外配置，也不需要改变
-启动 Claude Code 的方式。
+并在这一轮结束时收敛为常规的完成卡片。它记录了这一轮的每一个步骤，但几乎全部
+折叠收起：连续的普通步骤合并成一行，只有正在执行的和出错的才会展开细看。实时
+视图不需要额外配置，也不需要改变启动 Claude Code 的方式。
 
 ## 使用流程
 

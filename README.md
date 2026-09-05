@@ -74,25 +74,29 @@ Sessions stay quiet unless you choose to look. Tap **Watch** on a session, or
 reply `watch`, and one card follows it:
 
 ```text
-🟢 Claude is working
-Fix token refresh · payments-api · 6m 12s
+🟢 Working · 6m 12s
+Fix token refresh · payments-api
 
 Current progress
 Found duplicate refresh validation. Consolidating
 the logic and checking the callers.
 
-Recent activity
+Activity
 ✓ Read 2 files
 ✓ Updated refresh.go
-◌ Running go test ./...
 
-Updated just now
+▸ ◌ Running go test ./...
+
+Activity just now
+[ Interrupt ]
 ```
 
 That one card updates in place — never a message per action, never raw logs or
 model reasoning — and settles into the ordinary completion card when the turn
-finishes. Watching needs no extra setup and no different way of starting
-Claude Code.
+finishes. It carries every step of the turn, with almost all of it folded
+away: a run of ordinary steps is one line, and only what is running now or
+what went wrong opens for a closer look. Watching needs no extra setup and no
+different way of starting Claude Code.
 
 ## The workflow
 

@@ -214,37 +214,6 @@ func TestCapLinesMarksWhatItDropped(t *testing.T) {
 	}
 }
 
-func TestValidationSentence(t *testing.T) {
-	cases := []struct {
-		name  string
-		tests []transcript.TestRun
-		want  string
-	}{
-		{"none", nil, ""},
-		{"one passed", []transcript.TestRun{{Command: "go test ./...", Passed: true}}, "go test ./... passed."},
-		{"one failed", []transcript.TestRun{{Command: "go test ./...", Passed: false}}, "go test ./... failed."},
-		{"all passed", []transcript.TestRun{
-			{Command: "go test ./...", Passed: true},
-			{Command: "pytest -q", Passed: true},
-		}, "2 validation commands passed."},
-		{"some failed", []transcript.TestRun{
-			{Command: "go test ./...", Passed: false},
-			{Command: "pytest -q", Passed: true},
-		}, "1 of 2 validation commands failed."},
-		{"variants collapse", []transcript.TestRun{
-			{Command: "go test ./... 2>&1 | head", Passed: false},
-			{Command: "go test ./...", Passed: true},
-		}, "go test ./... passed."},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := validationSentence(tc.tests); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestFormatDuration(t *testing.T) {
 	cases := []struct {
 		d    string

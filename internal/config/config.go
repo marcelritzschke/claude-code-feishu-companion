@@ -28,17 +28,6 @@ const (
 	NotifyProgress NotifyLevel = "important+progress"
 )
 
-// DetailLevel is how much a completion notification says.
-type DetailLevel string
-
-const (
-	// DetailNormal includes validation results and an excerpt of Claude's
-	// final answer. The default.
-	DetailNormal DetailLevel = "normal"
-	// DetailCompact keeps completions to a one-glance summary.
-	DetailCompact DetailLevel = "compact"
-)
-
 // Switch is a plain on/off setting. It is spelled out rather than left a
 // bool because a missing value in a config file is indistinguishable from
 // false, and the two remote-continuation settings default to on.
@@ -118,7 +107,6 @@ type Config struct {
 	// value means the Feishu default.
 	Brand  Brand       `toml:"brand"`
 	Notify NotifyLevel `toml:"notify"`
-	Detail DetailLevel `toml:"detail"`
 
 	// Remote is whether a session may be continued from Feishu at all.
 	// With it off, Claude Companion is exactly the attention-mode one-way notifier.
@@ -143,11 +131,6 @@ func (c *Config) RemotePermissionsEnabled() bool {
 // ProgressEnabled reports whether long-running progress updates are on.
 func (c *Config) ProgressEnabled() bool {
 	return c.Notify == NotifyProgress
-}
-
-// CompactCompletions reports whether completions use the compact layout.
-func (c *Config) CompactCompletions() bool {
-	return c.Detail == DetailCompact
 }
 
 // Path returns the config file path: $CLAUDE_COMPANION_CONFIG if set,
@@ -252,9 +235,6 @@ func adoptLegacyConfig(dest string) ([]byte, bool) {
 func (c *Config) applyDefaults() {
 	if c.Notify != NotifyImportant && c.Notify != NotifyProgress {
 		c.Notify = NotifyImportant
-	}
-	if c.Detail != DetailNormal && c.Detail != DetailCompact {
-		c.Detail = DetailNormal
 	}
 	if c.Remote != On && c.Remote != Off {
 		c.Remote = On

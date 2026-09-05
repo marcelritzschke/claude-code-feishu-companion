@@ -1,6 +1,8 @@
 package notify
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +41,7 @@ func TestSessionCardAnswersWhatClaudeIsDoing(t *testing.T) {
 		"Fix token refresh · payments-api",
 		"Current progress",
 		"Found duplicate refresh validation.",
-		"Recent activity",
+		"Activity",
 		"✓ Read session.go",
 		"✓ Updated refresh.go",
 		"◌ Running go test ./...",
@@ -52,16 +54,89 @@ func TestSessionCardAnswersWhatClaudeIsDoing(t *testing.T) {
 	}
 }
 
-func TestLiveCardKeepsRecentActivityShort(t *testing.T) {
+// activityLines is the lines the activity items read as, which is what
+// most of these tests are about.
+func activityLines(steps []transcript.Step) []string {
+	items := activityItemsOf(steps)
+	lines := make([]string, 0, len(items))
+	for _, it := range items {
+		lines = append(lines, it.line)
+	}
+	return lines
+}
+
+// The card carries the whole turn now, so the thing that has to hold is
+// not a count of items but that the result still fits Feishu's element
+// budget - the limit that, when exceeded, silently stops the card
+// updating for the rest of the turn.
+func TestLongTurnStaysWithinTheElementBudget(t *testing.T) {
 	var steps []transcript.Step
-	for _, name := range []string{"a", "b", "c", "d", "e", "f"} {
-		steps = append(steps, step("Grep", map[string]any{"pattern": name}, true, false, ""))
-		steps = append(steps, step("Bash", map[string]any{"command": "echo " + name}, true, false, ""))
+	for i := range 500 {
+		steps = append(steps, step("Read", map[string]any{"file_path": fmt.Sprintf("/x/f%d.go", i)}, true, false, ""))
+		steps = append(steps, step("Bash", map[string]any{"command": fmt.Sprintf("go test ./pkg%d", i)}, true, true,
+			"a failure long enough to be worth truncating, repeated for realism"))
+		steps = append(steps, step("Grep", map[string]any{"pattern": fmt.Sprintf("p%d", i)}, true, false, ""))
 	}
-	lines := activityLines(steps)
-	if len(lines) > 5 {
-		t.Errorf("recent activity should stay to a handful of items, got %d: %v", len(lines), lines)
+	turn := &transcript.Turn{Start: time.Now().Add(-3 * time.Hour), Title: "Long refactor",
+		Progress: "Still going.", Steps: steps}
+
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if n := countElements(t, card); n > elementBudget {
+		t.Errorf("card carries %d elements, over the budget of %d", n, elementBudget)
+	}
+}
+
+// Whatever does not fit is folded, never dropped: the card's job is to
+// answer what happened while the user was away.
+func TestOverflowIsFoldedRatherThanDiscarded(t *testing.T) {
+	var steps []transcript.Step
+	for i := range 400 {
+		steps = append(steps, step("Bash", map[string]any{"command": fmt.Sprintf("cmd%d", i)}, true, true, "boom"))
+	}
+	turn := &transcript.Turn{Start: time.Now().Add(-time.Hour), Progress: "Working.", Steps: steps}
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "earlier") {
+		t.Errorf("a turn that overflows must say how much it folded away: %s", card[:400])
+	}
+	if n := countElements(t, card); n > elementBudget {
+		t.Errorf("card carries %d elements, over the budget of %d", n, elementBudget)
+	}
+}
+
+// countElements counts every element on a card the way Feishu does, which
+// includes the ones nested inside a panel or a column.
+func countElements(t *testing.T, cardJSON string) int {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal([]byte(cardJSON), &m); err != nil {
+		t.Fatalf("card is not valid JSON: %v", err)
+	}
+	var walk func(v any) int
+	walk = func(v any) int {
+		n := 0
+		switch t := v.(type) {
+		case map[string]any:
+			if _, ok := t["tag"]; ok {
+				n++
+			}
+			for _, inner := range t {
+				n += walk(inner)
+			}
+		case []any:
+			for _, inner := range t {
+				n += walk(inner)
+			}
+		}
+		return n
+	}
+	body, _ := m["body"].(map[string]any)
+	return walk(body["elements"])
 }
 
 func TestConsecutiveActionsOfOneKindCollapse(t *testing.T) {

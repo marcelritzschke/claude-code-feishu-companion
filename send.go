@@ -65,7 +65,7 @@ func runSend(args []string) int {
 			return 0
 		}
 		// Dry-run needs no credentials; exercise card building with defaults.
-		cfg = &config.Config{Notify: config.NotifyImportant, Detail: config.DetailNormal}
+		cfg = &config.Config{Notify: config.NotifyImportant}
 	}
 
 	// The daemon is the one role that can see more than this single moment,

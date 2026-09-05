@@ -1,12 +1,9 @@
 package notify
 
 import (
-	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
@@ -19,11 +16,6 @@ const (
 	itemCap     = 64  // one recent-activity item
 	detailCap   = 120 // the detail line under an item that went wrong
 )
-
-// activityItems is how many recent actions a session card lists. The
-// spec's "three to five meaningful items" with the low end preferred: the
-// card answers what Claude is broadly doing, not what it has emitted.
-const activityItems = 4
 
 // SessionView is what the daemon knows about a session's live card that
 // neither the session nor its transcript can say: how fresh the observed
@@ -60,12 +52,6 @@ func SessionCard(s session.Session, turn *transcript.Turn, view SessionView) (st
 // observed. A session Claude Companion cannot control says so on the card
 // itself rather than offering controls that would not work.
 func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
-	bodies := []string{"**Current progress**\n" + currentProgress(turn)}
-	if lines := activityLines(turn.Steps); len(lines) > 0 {
-		bodies = append(bodies, "**Recent activity**\n"+strings.Join(lines, "\n"))
-	}
-	bodies = append(bodies, notesBody(view.Notes))
-
 	template, title := "green", "🟢 Working"+elapsedSuffix(turn)
 	footer := activityNote(view.ActivityAt)
 	var buttons []Button
@@ -79,7 +65,34 @@ func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 			Action: Action{Kind: ActionInterrupt, Session: s.ID},
 		})
 	}
-	return card(template, title, s.Describe(), bodies, buttons, footer)
+
+	fixed := []Section{Prose("**Current progress**\n" + currentProgress(turn))}
+	if notes := notesBody(view.Notes); notes != "" {
+		fixed = append(fixed, Prose(notes))
+	}
+	sections := withActivity(fixed, turn.Steps, buttons, footer)
+	return cardOf(template, title, s.Describe(), sections, buttons, footer)
+}
+
+// withActivity places a turn's activity after the sections that always
+// appear, giving it whatever element budget those leave behind.
+//
+// The budget is worked out here rather than guessed at, because what fits
+// depends on the rest of the card: a session that can be interrupted
+// spends elements on a button, and every section costs a rule to separate
+// it from the one before.
+func withActivity(fixed []Section, steps []transcript.Step, buttons []Button, footer string) []Section {
+	spent := 0
+	for _, sec := range fixed {
+		spent += sec.cost()
+	}
+	// The activity arrives as a single block, so it adds exactly one more
+	// section and therefore exactly one more rule.
+	budget := elementBudget - spent - chromeCost(len(fixed)+1, buttons, footer)
+	if activity := activitySections(steps, budget); activity != nil {
+		return append(fixed, activity)
+	}
+	return fixed
 }
 
 // waitingSessionCard is the session card while Claude is blocked on the
@@ -153,7 +166,8 @@ func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (st
 			Action: Action{Kind: ActionSelect, Session: s.ID},
 		})
 	}
-	return card(template, title+elapsedSuffix(turn), s.Describe(), bodies, buttons, note)
+	return cardOf(template, title+elapsedSuffix(turn), s.Describe(),
+		withHistory(proseOf(bodies), turn), buttons, note)
 }
 
 // WatchStoppedCard leaves a session card at rest while its turn is still
@@ -182,7 +196,7 @@ func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (st
 func LiveSignature(s session.Session, turn *transcript.Turn) string {
 	const sep = "\x1f"
 	return string(s.State) + sep + string(s.WaitingOn) + sep + currentProgress(turn) + sep +
-		strings.Join(activityLines(turn.Steps), sep)
+		activityDigest(turn.Steps)
 }
 
 // currentProgress is the short human-readable description of the work in
@@ -249,138 +263,4 @@ func joinNotes(notes ...string) string {
 		}
 	}
 	return strings.Join(kept, " · ")
-}
-
-// group is a run of consecutive actions of one kind, which is how a live
-// card stays short: four reads in a row are one line, not four.
-//
-// Only unremarkable actions are collapsed. Whatever is running now, and
-// whatever went wrong, keeps its own line - those are the two things the
-// user opened the card to see.
-type group struct {
-	act
-	count   int
-	running bool
-	errored bool
-	detail  string
-}
-
-// activityLines renders the turn's recent activity as the few marked items
-// a live card shows. The list describes progress; it does not enumerate
-// tool calls.
-func activityLines(steps []transcript.Step) []string {
-	var groups []group
-	for _, st := range steps {
-		a, ok := activityOf(st)
-		if !ok {
-			continue
-		}
-		plain := st.Done && !st.Errored
-		if n := len(groups); plain && n > 0 && groups[n-1].done == a.done &&
-			!groups[n-1].running && !groups[n-1].errored {
-			groups[n-1].count++
-			groups[n-1].subject = a.subject
-			continue
-		}
-		g := group{act: a, count: 1, running: !st.Done, errored: st.Errored}
-		if st.Errored {
-			g.detail = st.Error
-		}
-		groups = append(groups, g)
-	}
-	if len(groups) > activityItems {
-		groups = groups[len(groups)-activityItems:]
-	}
-
-	lines := make([]string, 0, len(groups))
-	for _, g := range groups {
-		lines = append(lines, g.render())
-	}
-	return lines
-}
-
-// render is one activity item: a mark saying how it went, what it was, and
-// - only when something went wrong - a line saying what, and that Claude
-// carried on. That last part is the point: a tool hitting a problem is not
-// the task failing, and the user must never have to guess which they are
-// looking at.
-func (g group) render() string {
-	switch {
-	case g.errored:
-		line := "⚠ " + g.text(g.done)
-		if detail := truncateRunes(flatten(g.detail), detailCap); detail != "" {
-			return line + "\n└ " + detail + " — Claude carried on."
-		}
-		return line + "\n└ Claude carried on."
-	case g.running:
-		return "◌ " + g.text(g.doing)
-	}
-	return "✓ " + g.text(g.done)
-}
-
-// text names what a group did, collapsing a run into a count.
-func (g group) text(verb string) string {
-	if g.count > 1 {
-		return fmt.Sprintf("%s %d %s", verb, g.count, g.noun)
-	}
-	if g.subject == "" {
-		return verb
-	}
-	return verb + " " + truncateRunes(g.subject, itemCap)
-}
-
-// act is how one tool call reads as an activity item: what it is called
-// once it is over, what it is called while it runs, what it acted on, and
-// the plural a run of them collapses to.
-type act struct {
-	done    string
-	doing   string
-	subject string
-	noun    string
-}
-
-// activityOf describes one tool call as a live-card item.
-//
-// Not every call earns a line. Bookkeeping the user never asked to see -
-// a todo list being rewritten - is left out entirely, which is the live-companion
-// noise policy applied at its source.
-func activityOf(st transcript.Step) (act, bool) {
-	str := func(field string) string {
-		v, _ := st.Input[field].(string)
-		return v
-	}
-	switch st.Tool {
-	case "Read":
-		return act{"Read", "Reading", pathdisp.Base(str("file_path")), "files"}, true
-	case "Edit", "Write":
-		return act{"Updated", "Updating", pathdisp.Base(str("file_path")), "files"}, true
-	case "NotebookEdit":
-		return act{"Updated", "Updating", pathdisp.Base(str("notebook_path")), "files"}, true
-	case "Bash":
-		return act{"Ran", "Running", cleanCommand(flatten(str("command"))), "commands"}, true
-	case "Grep", "Glob":
-		return act{"Searched", "Searching", "for " + flatten(str("pattern")), "times"}, true
-	case "WebSearch":
-		return act{"Searched the web", "Searching the web", "for " + flatten(str("query")), "times"}, true
-	case "WebFetch":
-		return act{"Fetched", "Fetching", webHost(str("url")), "pages"}, true
-	case "Task", "Agent":
-		return act{"Delegated", "Delegating", flatten(str("description")), "subtasks"}, true
-	case "ExitPlanMode":
-		return act{"Proposed a plan", "Writing up a plan", "", "plans"}, true
-	case "AskUserQuestion":
-		return act{"Asked you a question", "Asking you a question", "", "questions"}, true
-	case "TodoWrite":
-		return act{}, false
-	}
-	return act{"Used", "Using", readableTool(st.Tool), "tools"}, true
-}
-
-// webHost shortens a fetched URL to its host, which is all the user needs
-// to recognise it and all a phone line has room for.
-func webHost(raw string) string {
-	if u, err := url.Parse(raw); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return flatten(raw)
 }

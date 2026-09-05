@@ -133,7 +133,7 @@ func fixture(t *testing.T, remote session.Remote) (*Daemon, *recorder, *link) {
 	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
 	rec := newRecorder()
 	d := New(&config.Config{
-		Notify: config.NotifyImportant, Detail: config.DetailNormal,
+		Notify: config.NotifyImportant,
 		Remote: config.On, RemotePermissions: config.On,
 	}, rec, nil, "1.0.0")
 	l := &link{}

@@ -89,7 +89,7 @@ func sampleTurn() *transcript.Turn {
 }
 
 func TestCompletionCardNormal(t *testing.T) {
-	card, err := CompletionCard(stopPayload(), sampleTurn(), Options{Detail: Normal})
+	card, err := CompletionCard(stopPayload(), sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,29 +119,70 @@ func TestCompletionCardNormal(t *testing.T) {
 	}
 }
 
-func TestCompletionCardCompact(t *testing.T) {
-	card, err := CompletionCard(stopPayload(), sampleTurn(), Options{Detail: Compact})
+// A finished turn keeps what it did, folded away. "What happened while I
+// was away" is half of what this product answers, and a card that dropped
+// the history the moment the turn ended could not answer it.
+func TestCompletionCardKeepsTheTurnsStepsFolded(t *testing.T) {
+	turn := sampleTurn()
+	turn.Steps = []transcript.Step{
+		{Tool: "Read", Input: map[string]any{"file_path": "/w/refresh.go"}, Done: true},
+		{Tool: "Edit", Input: map[string]any{"file_path": "/w/refresh.go"}, Done: true},
+		{Tool: "Bash", Input: map[string]any{"command": "go test ./..."}, Done: true},
+	}
+	card, err := CompletionCard(stopPayload(), turn, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := decodeCard(t, card)
-	divs, _ := sections(t, m)
-	if len(divs) != 1 {
-		t.Fatalf("compact completion should be a single section, got %q", divs)
+	panels := panelsOf(t, decodeCard(t, card))
+	if len(panels) != 1 {
+		t.Fatalf("completion should carry exactly one history panel, got %d", len(panels))
 	}
-	// Compact states the validation outcome as prose, not as check lines.
-	if !strings.Contains(divs[0], "The refresh flow now rotates") || !strings.Contains(divs[0], "2 validation commands passed.") {
-		t.Errorf("compact body = %q", divs[0])
+	if panels[0].expanded {
+		t.Error("a settled card has nothing running; its history must arrive shut")
 	}
-	if strings.Contains(divs[0], "✓") {
-		t.Errorf("compact must not render check lines: %q", divs[0])
+	if !strings.Contains(panels[0].title, "3 steps") {
+		t.Errorf("history panel title = %q, want the step count", panels[0].title)
 	}
+	for _, want := range []string{"Read refresh.go", "Updated refresh.go", "Ran go test ./..."} {
+		if !strings.Contains(panels[0].body, want) {
+			t.Errorf("history is missing %q: %s", want, panels[0].body)
+		}
+	}
+}
+
+// panelInfo is a collapsible panel as a test reads it.
+type panelInfo struct {
+	title    string
+	body     string
+	expanded bool
+}
+
+// panelsOf returns the collapsible panels on a card, in order.
+func panelsOf(t *testing.T, m map[string]any) []panelInfo {
+	t.Helper()
+	var out []panelInfo
+	for _, e := range cardElements(t, m) {
+		el := e.(map[string]any)
+		if el["tag"] != "collapsible_panel" {
+			continue
+		}
+		hdr := el["header"].(map[string]any)
+		p := panelInfo{title: hdr["title"].(map[string]any)["content"].(string)}
+		p.expanded, _ = el["expanded"].(bool)
+		if inner, ok := el["elements"].([]any); ok && len(inner) > 0 {
+			p.body, _ = inner[0].(map[string]any)["content"].(string)
+		}
+		p.title = strings.ReplaceAll(p.title, "  \n", "\n")
+		p.body = strings.ReplaceAll(p.body, "  \n", "\n")
+		out = append(out, p)
+	}
+	return out
 }
 
 func TestCompletionCardFailedValidation(t *testing.T) {
 	turn := sampleTurn()
 	turn.Tests = []transcript.TestRun{{Command: "go test ./...", Passed: false}}
-	card, err := CompletionCard(stopPayload(), turn, Options{Detail: Normal})
+	card, err := CompletionCard(stopPayload(), turn, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +194,7 @@ func TestCompletionCardFailedValidation(t *testing.T) {
 func TestCompletionCardWithoutFinalMessage(t *testing.T) {
 	p := stopPayload()
 	p.LastAssistantMessage = ""
-	card, err := CompletionCard(p, sampleTurn(), Options{Detail: Normal})
+	card, err := CompletionCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +206,7 @@ func TestCompletionCardWithoutFinalMessage(t *testing.T) {
 func TestCompletionCardSkipsMarkdownHeadings(t *testing.T) {
 	p := stopPayload()
 	p.LastAssistantMessage = "## Summary\n- Fixed the token rotation.\n\nDetails follow."
-	card, err := CompletionCard(p, sampleTurn(), Options{Detail: Normal})
+	card, err := CompletionCard(p, sampleTurn(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

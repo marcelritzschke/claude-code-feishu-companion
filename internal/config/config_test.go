@@ -15,7 +15,7 @@ func TestRoundTrip(t *testing.T) {
 	t.Setenv(EnvVar, filepath.Join(dir, "config.toml"))
 
 	c := &Config{AppID: "cli_test", AppSecret: "sec", OpenID: "ou_123",
-		Notify: NotifyProgress, Detail: DetailCompact}
+		Notify: NotifyProgress}
 	if err := c.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -37,8 +37,8 @@ func TestRoundTrip(t *testing.T) {
 	if *got != *c {
 		t.Errorf("round trip: got %+v want %+v", got, c)
 	}
-	if !got.ProgressEnabled() || !got.CompactCompletions() {
-		t.Errorf("behavior flags: progress=%v compact=%v", got.ProgressEnabled(), got.CompactCompletions())
+	if !got.ProgressEnabled() {
+		t.Errorf("behavior flags: progress=%v", got.ProgressEnabled())
 	}
 }
 
@@ -57,10 +57,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if got.Notify != NotifyImportant {
 		t.Errorf("notify default = %q", got.Notify)
 	}
-	if got.Detail != DetailNormal {
-		t.Errorf("detail default = %q", got.Detail)
-	}
-	if got.ProgressEnabled() || got.CompactCompletions() {
+	if got.ProgressEnabled() {
 		t.Error("defaults should be quiet and detailed")
 	}
 }

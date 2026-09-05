@@ -66,6 +66,10 @@ type ToolCall struct {
 
 // Step is one tool call of the turn together with how it ended, which is
 // what lets a live view mark an action done, running, or in trouble.
+//
+// Every step of the turn is kept. The card decides how much of that fits;
+// truncating here as well would mean two layers guessing at a limit only
+// one of them can see.
 type Step struct {
 	Tool  string
 	Input map[string]any
@@ -77,10 +81,6 @@ type Step struct {
 	// Error is the result text of an errored call, empty otherwise.
 	Error string
 }
-
-// maxSteps bounds how much of a turn's activity is kept. A live card shows
-// a handful of items, so the recent ones are the only ones that matter.
-const maxSteps = 40
 
 // fileTools maps tool names that modify files to their path input field.
 var fileTools = map[string]string{
@@ -266,9 +266,6 @@ func (t *Turn) collect(uses []toolUse, results map[string]toolResult) {
 			step.Error = res.text
 		}
 		t.Steps = append(t.Steps, step)
-	}
-	if len(t.Steps) > maxSteps {
-		t.Steps = t.Steps[len(t.Steps)-maxSteps:]
 	}
 	if len(uses) > 0 {
 		t.LatestTool = &ToolCall{Name: uses[len(uses)-1].item.Name, Input: uses[len(uses)-1].item.Input}

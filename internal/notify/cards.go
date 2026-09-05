@@ -62,16 +62,6 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 		summary = accomplishment(turn)
 	}
 
-	if opts.Detail == Compact {
-		// One glance: the summary and the validation outcome as prose.
-		lines := []string{summary}
-		if v := validationSentence(turn.Tests); v != "" {
-			lines = append(lines, v)
-		}
-		return card("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn),
-			[]string{strings.Join(lines, "\n")}, opts.buttons(), "")
-	}
-
 	var bodies []string
 	bodies = append(bodies, summary)
 	if v := validationLines(turn.Tests); len(v) > 0 {
@@ -80,7 +70,8 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 	if rest != "" {
 		bodies = append(bodies, "**Claude**\n\""+truncateRunes(rest, quoteCap)+"\"")
 	}
-	return card("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn), bodies, opts.buttons(), "")
+	return cardOf("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn),
+		withHistory(proseOf(bodies), turn), opts.buttons(), "")
 }
 
 // FailureCard reports a turn that needs the user instead of one that
@@ -98,8 +89,8 @@ func FailureCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, 
 	if detail := lastRelevantError(p, turn); detail != "" {
 		bodies = append(bodies, "**Last relevant error**\n"+detail)
 	}
-	return card("red", "🔴 Failed"+elapsedSuffix(turn), contextLine(p, turn), bodies,
-		opts.buttons(), "Open Claude Code to continue.")
+	return cardOf("red", "🔴 Failed"+elapsedSuffix(turn), contextLine(p, turn),
+		withHistory(proseOf(bodies), turn), opts.buttons(), "Open Claude Code to continue.")
 }
 
 // failureText says why the turn needs the user, in one sentence.

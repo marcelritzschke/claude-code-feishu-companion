@@ -129,6 +129,28 @@ func main() {
 		}},
 	}
 
+	// A long turn is the case the element budget exists for: if the
+	// budget is wrong the card stops updating partway through, which is
+	// exactly the failure a user would never report as a card bug.
+	for _, n := range []int{50, 200, 1000} {
+		long := turn()
+		long.Steps = nil
+		for i := range n {
+			long.Steps = append(long.Steps,
+				transcript.Step{Tool: "Read", Input: map[string]any{"file_path": fmt.Sprintf("/w/p/f%d.go", i)}, Done: true},
+				transcript.Step{Tool: "Bash", Input: map[string]any{"command": fmt.Sprintf("go test ./pkg%d", i)},
+					Done: true, Errored: true, Error: "dial tcp 127.0.0.1:5432: connection refused"},
+				transcript.Step{Tool: "Grep", Input: map[string]any{"pattern": fmt.Sprintf("tok%d", i)}, Done: true})
+		}
+		long.Steps = append(long.Steps, transcript.Step{Tool: "Bash", Input: map[string]any{"command": "go test ./..."}})
+		cards = append(cards, struct {
+			name string
+			fn   func() (string, error)
+		}{fmt.Sprintf("SessionCard/%d-steps", len(long.Steps)), func() (string, error) {
+			return notify.SessionCard(sess(session.Working), long, view)
+		}})
+	}
+
 	var ids []string
 	bad := 0
 	for _, cd := range cards {

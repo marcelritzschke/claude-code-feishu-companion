@@ -13,7 +13,6 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/deliver"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hooksreg"
@@ -228,15 +227,6 @@ func askBehavior(cfg *config.Config) error {
 	}
 	cfg.Notify = notify
 
-	detail, err := tui.Choose("How much should a finished turn say?", "", []tui.Choice[config.DetailLevel]{
-		{Label: "Normal", Note: "summary, validation, and Claude's answer", Value: config.DetailNormal},
-		{Label: "Compact", Note: "one-glance summary", Value: config.DetailCompact},
-	})
-	if err != nil {
-		return err
-	}
-	cfg.Detail = detail
-
 	remote, err := tui.Choose("Continue sessions from Feishu?",
 		"Pick one of the Claude Code sessions running here, send it a follow-up, or watch it work.",
 		[]tui.Choice[config.Switch]{
@@ -275,7 +265,7 @@ func sendTestCard(cfg *config.Config, client *feishu.Client, how setupPath) erro
 		HookEventName:        hook.EventStop,
 		Cwd:                  cwd,
 		LastAssistantMessage: "Claude Companion is connected. You will get a message here when Claude finishes, hits a problem, or needs a decision from you.",
-	}, testTurn, notify.Options{Detail: deliver.DetailOf(cfg)})
+	}, testTurn, notify.Options{})
 	if err != nil {
 		return err
 	}

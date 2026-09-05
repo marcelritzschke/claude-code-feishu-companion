@@ -248,30 +248,6 @@ func validationLines(tests []transcript.TestRun) []string {
 	return capLines(lines, 3)
 }
 
-// validationSentence states the same outcome as prose, for the compact
-// completion that reads as a couple of sentences rather than a list.
-func validationSentence(tests []transcript.TestRun) string {
-	runs := latestRuns(tests)
-	failed := 0
-	for _, t := range runs {
-		if !t.Passed {
-			failed++
-		}
-	}
-	switch {
-	case len(runs) == 0:
-		return ""
-	case len(runs) == 1 && failed == 0:
-		return runs[0].Command + " passed."
-	case len(runs) == 1:
-		return runs[0].Command + " failed."
-	case failed == 0:
-		return fmt.Sprintf("%d validation commands passed.", len(runs))
-	default:
-		return fmt.Sprintf("%d of %d validation commands failed.", failed, len(runs))
-	}
-}
-
 // cleanCommand drops output plumbing (pipes, redirects like 2>&1) so a
 // validation line reads as the command itself.
 func cleanCommand(cmd string) string {

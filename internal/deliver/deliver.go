@@ -75,7 +75,7 @@ func (d *Deliverer) Event(turn *transcript.Turn, cfg *config.Config) {
 		debuglog.Printf("skip %s: reported another way", p.HookEventName)
 		return
 	}
-	opts := notify.Options{Detail: DetailOf(cfg), ContinueSession: d.ContinueSession}
+	opts := notify.Options{ContinueSession: d.ContinueSession}
 	switch p.HookEventName {
 	case hook.EventPermissionRequest:
 		card, err := notify.PermissionCard(p, turn, opts)

@@ -4,8 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
@@ -65,21 +63,5 @@ func TestWithholdChatterReportsShortRealWork(t *testing.T) {
 	}
 	if WithholdChatter(turn) != AlwaysNotify {
 		t.Error("a 20-second turn that changed files and ran tests must be reported")
-	}
-}
-
-func TestDetailOf(t *testing.T) {
-	cases := []struct {
-		level config.DetailLevel
-		want  notify.Detail
-	}{
-		{config.DetailNormal, notify.Normal},
-		{config.DetailCompact, notify.Compact},
-		{"", notify.Normal}, // anything unrecognised falls back to the default
-	}
-	for _, tc := range cases {
-		if got := DetailOf(&config.Config{Detail: tc.level}); got != tc.want {
-			t.Errorf("DetailOf(%q) = %v, want %v", tc.level, got, tc.want)
-		}
 	}
 }

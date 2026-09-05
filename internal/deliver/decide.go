@@ -3,8 +3,6 @@ package deliver
 import (
 	"time"
 
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
@@ -42,12 +40,4 @@ func WithholdChatter(turn *transcript.Turn) bool {
 		return AlwaysNotify
 	}
 	return LiveCardOnly
-}
-
-// DetailOf maps the user's configured completion detail to the card layout.
-func DetailOf(cfg *config.Config) notify.Detail {
-	if cfg.CompactCompletions() {
-		return notify.Compact
-	}
-	return notify.Normal
 }

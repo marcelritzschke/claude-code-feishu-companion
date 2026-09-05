@@ -13,23 +13,11 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
-// Detail is the user's completion-detail preference.
-type Detail int
-
-const (
-	// Normal is the default completion detail: summary, validation, and
-	// an excerpt of Claude's final answer.
-	Normal Detail = iota
-	// Compact is a one-glance completion: summary and validation only.
-	Compact
-)
-
 // Options are the things a card needs to know that the hook payload cannot
-// say: how much detail the user asked for, and whether this session can be
-// continued from Feishu. Only the daemon knows the latter, so a card built
-// by a hook falling back on its own simply offers no button.
+// say. Only the daemon knows whether a session can be continued from
+// Feishu, so a card built by a hook falling back on its own simply offers
+// no button.
 type Options struct {
-	Detail Detail
 	// ContinueSession, when set, renders a [ Continue ] button that points
 	// the user's next messages at that session.
 	ContinueSession string
@@ -188,10 +176,162 @@ func buttonRow(buttons []Button) any {
 	return set
 }
 
-// card assembles and marshals a card. Each non-empty body becomes a
-// markdown section, separated by rules; buttons, when present, render as
-// one row; footer, when set, renders as a quiet notation line.
+// A Section is one block on a card: either prose, or detail folded behind
+// a tap. Only these two shapes exist, because a card that can hide things
+// is still a card the user has to be able to read at a glance.
+type Section interface {
+	// elements renders the section, and says what it costs. Cost is in
+	// Feishu's own units - see elementBudget.
+	elements() []any
+	cost() int
+}
+
+// Block is several sections shown as one, with no rule between them. A
+// run of activity is one block: the steps of a turn belong together, and a
+// rule between each pair would be both noise and, at one element apiece, a
+// real cost against the budget.
+type Block struct {
+	Sections []Section
+}
+
+func (b Block) elements() []any {
+	var out []any
+	for _, sec := range b.Sections {
+		out = append(out, sec.elements()...)
+	}
+	return out
+}
+
+func (b Block) cost() int {
+	total := 0
+	for _, sec := range b.Sections {
+		total += sec.cost()
+	}
+	return total
+}
+
+// Prose is a section of markdown text.
+type Prose string
+
+func (p Prose) elements() []any { return []any{mdElement(string(p), "")} }
+func (Prose) cost() int         { return 1 }
+
+// Panel is detail behind a disclosure triangle: a title that is always
+// visible, and a body that is not until the user asks for it.
+//
+// A panel is the reason these cards moved to schema 2.0. It is what lets a
+// live card carry a whole turn's history without becoming a wall of text,
+// and what lets one step show its command without every step shouting.
+type Panel struct {
+	// Title is the line the user reads while the panel is shut.
+	Title string
+	// Body is what unfolding it reveals.
+	Body string
+	// Expanded opens the panel on arrival. Reserve it for the one thing
+	// happening right now; more than one open panel is just a long card.
+	Expanded bool
+	// Border tints the panel. Empty is the ordinary grey.
+	Border string
+}
+
+func (p Panel) elements() []any {
+	border := p.Border
+	if border == "" {
+		border = "grey"
+	}
+	body := p.Body
+	if body == "" {
+		body = "_No detail._"
+	}
+	return []any{&collapsiblePanelElement{
+		Tag:      "collapsible_panel",
+		Expanded: p.Expanded,
+		Header: &panelHeader{
+			Title:             mdElement(p.Title, ""),
+			VerticalAlign:     "center",
+			Icon:              &panelIcon{Tag: "standard_icon", Token: "down-small-ccm_outlined", Size: "16px 16px"},
+			IconPosition:      "follow_text",
+			IconExpandedAngle: -180,
+		},
+		Border:          &panelBorder{Color: border, CornerRadius: "5px"},
+		VerticalSpacing: "8px",
+		Padding:         "8px 8px 8px 8px",
+		Elements:        []any{mdElement(body, textSizeNotation)},
+	}}
+}
+
+// cost is four: the panel, the markdown in its header, the disclosure
+// icon, and the markdown in its body all count against the budget. The
+// icon counting is not obvious and is not documented - 49 panels are
+// accepted and 60 are not, which is 4 apiece against a budget of 199.
+func (Panel) cost() int { return panelCost }
+
+// panelCost is what one collapsible panel spends. It is named because the
+// activity budget reasons about it directly.
+const panelCost = 4
+
+type panelIcon struct {
+	Tag   string `json:"tag"`
+	Token string `json:"token"`
+	Size  string `json:"size"`
+}
+
+type panelBorder struct {
+	Color        string `json:"color"`
+	CornerRadius string `json:"corner_radius"`
+}
+
+type panelHeader struct {
+	Title             *markdownElement `json:"title"`
+	VerticalAlign     string           `json:"vertical_align,omitempty"`
+	Icon              *panelIcon       `json:"icon,omitempty"`
+	IconPosition      string           `json:"icon_position,omitempty"`
+	IconExpandedAngle int              `json:"icon_expanded_angle,omitempty"`
+}
+
+type collapsiblePanelElement struct {
+	Tag             string       `json:"tag"`
+	Expanded        bool         `json:"expanded"`
+	Header          *panelHeader `json:"header"`
+	Border          *panelBorder `json:"border,omitempty"`
+	VerticalSpacing string       `json:"vertical_spacing,omitempty"`
+	Padding         string       `json:"padding,omitempty"`
+	Elements        []any        `json:"elements"`
+}
+
+// elementBudget is how many elements one card may carry.
+//
+// Feishu's documentation says 200; the API accepts 199 and rejects 200
+// with error 11310, "element exceeds the limit". What is counted is every
+// tagged object anywhere in the body, nested ones included - a button and
+// the text inside it are two, and a collapsible panel is four.
+//
+// All of this was measured against the live API, because the published
+// documentation is wrong about it in both directions: the per-card ceiling
+// of 30KB it describes is not enforced here (a 63KB card was accepted
+// while a smaller one with more elements was not), and the element limit
+// it gives is one higher than the API allows. internal/cardsmoke is how to
+// check this again if a card starts failing to update mid-turn.
+const elementBudget = 199
+
+// card assembles a card whose sections are all prose. It is the ordinary
+// spelling; cardOf is the same thing for a card that also folds detail
+// away.
 func card(template, title, subtitle string, bodies []string, buttons []Button, footer string) (string, error) {
+	sections := make([]Section, 0, len(bodies))
+	for _, b := range bodies {
+		if b == "" {
+			continue
+		}
+		sections = append(sections, Prose(b))
+	}
+	return cardOf(template, title, subtitle, sections, buttons, footer)
+}
+
+// cardOf assembles and marshals a card. Sections are separated by rules;
+// buttons, when present, render as one row; footer, when set, renders as a
+// quiet notation line.
+func cardOf(template, title, subtitle string, sections []Section, buttons []Button, footer string) (string, error) {
 	c := &messageCard{
 		Schema: cardSchema,
 		Config: &cardConfig{UpdateMulti: true, WidthMode: "fill"},
@@ -201,14 +341,14 @@ func card(template, title, subtitle string, bodies []string, buttons []Button, f
 	if subtitle != "" {
 		c.Header.Subtitle = plainText(subtitle)
 	}
-	for _, b := range bodies {
-		if b == "" {
+	for _, sec := range sections {
+		if sec == nil {
 			continue
 		}
 		if len(c.Body.Elements) > 0 {
 			c.Body.Elements = append(c.Body.Elements, &hrElement{Tag: "hr"})
 		}
-		c.Body.Elements = append(c.Body.Elements, mdElement(b, ""))
+		c.Body.Elements = append(c.Body.Elements, sec.elements()...)
 	}
 	if len(buttons) > 0 {
 		c.Body.Elements = append(c.Body.Elements, buttonRow(buttons))
@@ -221,6 +361,26 @@ func card(template, title, subtitle string, bodies []string, buttons []Button, f
 		return "", err
 	}
 	return string(b), nil
+}
+
+// chromeCost is what a card costs before its sections: the rules between
+// them, the button row, and the footer. It is what the activity budget has
+// to leave room for.
+func chromeCost(sections int, buttons []Button, footer string) int {
+	cost := 0
+	if sections > 1 {
+		cost += sections - 1 // one rule between each pair
+	}
+	switch {
+	case len(buttons) == 1:
+		cost += 2 // the button and its text
+	case len(buttons) > 1:
+		cost += 1 + 3*len(buttons) // column_set, then a column, button and text each
+	}
+	if footer != "" {
+		cost++
+	}
+	return cost
 }
 
 // contextLine identifies the session without technical identifiers: the

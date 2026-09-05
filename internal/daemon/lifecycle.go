@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/flock"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
@@ -25,6 +26,11 @@ const (
 	startTimeout = 5 * time.Second
 	// dialTimeout bounds a single attempt to reach the daemon.
 	dialTimeout = 2 * time.Second
+	// stopTimeout is how long a replacement waits for the daemon it asked
+	// to leave. A stopping daemon still has cards to settle, so this is
+	// longer than a start: it holds the single-daemon lock until it exits,
+	// and a new one started too early would only lose the race for it.
+	stopTimeout = 20 * time.Second
 )
 
 // ErrAlreadyRunning reports that another daemon holds the lock.
@@ -97,6 +103,94 @@ func EnsureRunning() error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return errors.New("the daemon did not start answering in time")
+}
+
+// EnsureCurrent starts a daemon running the configuration that is on disk
+// now, replacing one that predates it.
+//
+// A daemon reads the config once and opens its Feishu connection from what
+// it read: credentials the user has since replaced live on in a process
+// that is still perfectly happy to answer a ping. That daemon holds the
+// return path for the previous Feishu app, so anything the user sends the
+// new bot reaches nobody, and setup would report that Feishu cannot reach
+// this computer when the truth is that this computer is listening to the
+// wrong app.
+//
+// Setup calls this because setup is what changes the configuration. Hooks
+// and channels keep to EnsureRunning: they have no reason to take a
+// running daemon away from the sessions attached to it.
+func EnsureCurrent() error {
+	if _, err := replaceIfStale(); err != nil {
+		return err
+	}
+	return EnsureRunning()
+}
+
+// replaceIfStale stops a running daemon that read an older configuration
+// than the one on disk, and reports whether it stopped one. A daemon that
+// is current, and no daemon at all, are both left alone: starting one is
+// EnsureCurrent's business.
+func replaceIfStale() (bool, error) {
+	stamp, err := config.Stamp()
+	if err != nil {
+		return false, err
+	}
+	st, ok := status()
+	if !ok || !st.ConfigStamp.Before(stamp) {
+		return false, nil
+	}
+	debuglog.Printf("daemon predates the configuration; restarting it")
+	if err := Stop(); err != nil {
+		return false, fmt.Errorf("replacing the daemon that is running an older configuration: %w", err)
+	}
+	if err := waitUntilGone(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// status asks a running daemon what it is running. A false return means no
+// daemon answered, which is not an error: starting one is the caller's
+// next move either way.
+func status() (ipc.Status, bool) {
+	env, err := ipc.Request(ipc.TypeStatus, nil, dialTimeout)
+	if err != nil {
+		return ipc.Status{}, false
+	}
+	var st ipc.Status
+	if err := env.Into(&st); err != nil {
+		return ipc.Status{}, false
+	}
+	return st, true
+}
+
+// waitUntilGone waits for a stopping daemon to let go of the single-daemon
+// lock.
+//
+// The lock is the signal, not the socket. A daemon closes its listener
+// early in its shutdown and then stays alive to settle the cards standing
+// on the user's phone, so it stops answering seconds before it exits. A
+// replacement started in that window takes the lock check, not the socket,
+// and exits with ErrAlreadyRunning - leaving the caller waiting for a
+// daemon that already gave up.
+func waitUntilGone() error {
+	deadline := time.Now().Add(stopTimeout)
+	for {
+		// Taking the lock is the proof it was free. It is handed straight
+		// back for the replacement to take: nothing else is racing for it
+		// here, and a daemon that another hook starts in the meantime is
+		// exactly what EnsureRunning is looking for anyway.
+		if f, err := acquire(); err == nil {
+			f.Close()
+			return nil
+		} else if !errors.Is(err, ErrAlreadyRunning) {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return errors.New("the daemon did not stop in time")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // Stop asks a running daemon to exit.

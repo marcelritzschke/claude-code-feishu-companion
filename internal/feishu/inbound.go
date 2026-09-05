@@ -30,6 +30,11 @@ type Inbound struct {
 
 	messages chan Message
 	actions  chan CardAction
+	// strangers carries the sender id of an event that was dropped because
+	// it came from another account. Nothing acts on those events, but
+	// setup has to be able to tell "Feishu never reached this computer"
+	// from "it did, and this computer is set up for someone else".
+	strangers chan string
 }
 
 // Message is a direct message the user sent the bot.
@@ -57,9 +62,10 @@ const inboundBuffer = 32
 // NewInbound builds the return path. Nothing connects until Run.
 func NewInbound(cfg *config.Config) *Inbound {
 	in := &Inbound{
-		cfg:      cfg,
-		messages: make(chan Message, inboundBuffer),
-		actions:  make(chan CardAction, inboundBuffer),
+		cfg:       cfg,
+		messages:  make(chan Message, inboundBuffer),
+		actions:   make(chan CardAction, inboundBuffer),
+		strangers: make(chan string, inboundBuffer),
 	}
 	handler := dispatcher.NewEventDispatcher("", "").
 		OnP2MessageReceiveV1(in.onMessage).
@@ -88,6 +94,10 @@ func NewInbound(cfg *config.Config) *Inbound {
 func (in *Inbound) Messages() <-chan Message   { return in.messages }
 func (in *Inbound) Actions() <-chan CardAction { return in.actions }
 
+// Strangers is what somebody else did in Feishu: the sender ids of events
+// that were dropped for coming from another account.
+func (in *Inbound) Strangers() <-chan string { return in.strangers }
+
 // Run holds the connection open until ctx ends, reconnecting on its own.
 func (in *Inbound) Run(ctx context.Context) error { return in.ws.Start(ctx) }
 
@@ -99,6 +109,7 @@ func (in *Inbound) onMessage(_ context.Context, event *larkim.P2MessageReceiveV1
 	msg := event.Event.Message
 	if !in.fromConfiguredUser(event.Event.Sender) {
 		debuglog.Printf("inbound: dropped a message from another sender")
+		in.emitStranger(senderID(event.Event.Sender))
 		return nil
 	}
 	if deref(msg.MessageType) != larkim.MsgTypeText {
@@ -124,6 +135,7 @@ func (in *Inbound) onCardAction(_ context.Context, event *callback.CardActionTri
 	}
 	if !in.operatorIsConfiguredUser(event.Event.Operator) {
 		debuglog.Printf("inbound: dropped a card action from another sender")
+		in.emitStranger(operatorID(event.Event.Operator))
 		return nil, nil
 	}
 	value, err := json.Marshal(event.Event.Action.Value)
@@ -140,6 +152,44 @@ func (in *Inbound) onCardAction(_ context.Context, event *callback.CardActionTri
 		debuglog.Printf("inbound: dropped a card action; the daemon is not keeping up")
 	}
 	return nil, nil
+}
+
+// emitStranger reports a dropped event without ever blocking on it: the
+// return path must not stall because nothing is listening for strangers.
+func (in *Inbound) emitStranger(id string) {
+	select {
+	case in.strangers <- id:
+	default:
+	}
+}
+
+// senderID is the most specific id an event carries for who sent it, for
+// saying which account a dropped message came from.
+func senderID(sender *larkim.EventSender) string {
+	if sender == nil || sender.SenderId == nil {
+		return ""
+	}
+	for _, id := range []string{deref(sender.SenderId.OpenId), deref(sender.SenderId.UserId), deref(sender.SenderId.UnionId)} {
+		if id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// operatorID is the same for a card action, which names a tapper rather
+// than a sender.
+func operatorID(op *callback.Operator) string {
+	if op == nil {
+		return ""
+	}
+	if op.OpenID != "" {
+		return op.OpenID
+	}
+	if op.UserID != nil {
+		return *op.UserID
+	}
+	return ""
 }
 
 func (in *Inbound) emitMessage(m Message) {

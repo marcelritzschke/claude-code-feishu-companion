@@ -4,10 +4,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/pelletier/go-toml/v2"
@@ -146,6 +148,27 @@ func Path() (string, error) {
 
 // appDir is the directory this program keeps its configuration in.
 const appDir = "claude-companion"
+
+// Stamp reports when the config file was last written. A running daemon
+// holds the credentials it read at startup, so this is what tells a caller
+// whether the daemon it is talking to predates the configuration on disk.
+// A config file that is not there yet has no stamp, and no error either:
+// the caller's question is whether the daemon is behind, and it cannot be
+// behind a file that does not exist.
+func Stamp() (time.Time, error) {
+	p, err := Path()
+	if err != nil {
+		return time.Time{}, err
+	}
+	info, err := os.Stat(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("stat config: %w", err)
+	}
+	return info.ModTime(), nil
+}
 
 // Load reads the config from Path, applying defaults for unset behavior
 // settings.

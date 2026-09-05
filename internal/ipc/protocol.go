@@ -12,6 +12,7 @@ package ipc
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
@@ -88,6 +89,43 @@ type PermissionVerdict struct {
 // caller can fall back rather than assume the message landed.
 type Ack struct {
 	OK  bool   `json:"ok"`
+	Err string `json:"err,omitempty"`
+}
+
+// Status answers TypeStatus. It is an Ack with the one thing a caller
+// cannot see from outside: which configuration the running daemon is
+// actually holding.
+type Status struct {
+	OK bool `json:"ok"`
+	// ConfigStamp is the modification time of the config file the daemon
+	// read at startup. A daemon whose stamp is older than the file on disk
+	// is running credentials the user has since replaced, and answers for
+	// a Feishu app they may no longer be talking to.
+	ConfigStamp time.Time `json:"config_stamp,omitempty"`
+}
+
+// InboundProbeWait is how long a daemon holds a TypeAwaitInbound request
+// open before answering that nothing came. It is part of the protocol
+// because both ends need it: the daemon waits exactly this long, and the
+// caller must allow for a little more, so that the daemon's own answer -
+// which knows why the wait ended - arrives before the caller's deadline.
+const InboundProbeWait = 2 * time.Minute
+
+// InboundProbeGrace is what a caller adds to InboundProbeWait for the
+// answer to travel back.
+const InboundProbeGrace = 15 * time.Second
+
+// InboundProof answers TypeAwaitInbound. It separates the two ways the
+// return path can stay silent, because they need opposite advice: nothing
+// arrived at all, or something arrived from an account this computer does
+// not answer to.
+type InboundProof struct {
+	OK bool `json:"ok"`
+	// Stranger reports that Feishu did reach this computer, but the
+	// message came from another account. The return path works; the
+	// configured owner is wrong.
+	Stranger bool `json:"stranger,omitempty"`
+	// Err says what went wrong, in the user's terms.
 	Err string `json:"err,omitempty"`
 }
 

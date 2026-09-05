@@ -139,3 +139,40 @@ func TestLoadMissingAtDefaultPath(t *testing.T) {
 		t.Errorf("Load with nothing on disk = %v, want a not-exist error", err)
 	}
 }
+
+// Stamp is what tells a caller that a running daemon is holding an older
+// configuration than the one on disk, so saving must move it.
+func TestStampMovesWithASave(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	t.Setenv(EnvVar, p)
+
+	before, err := Stamp()
+	if err != nil {
+		t.Fatalf("Stamp with no config: %v", err)
+	}
+	if !before.IsZero() {
+		t.Errorf("a config that does not exist has no stamp, got %s", before)
+	}
+
+	c := &Config{AppID: "cli_test", AppSecret: "sec", OpenID: "ou_123"}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	// Filesystems keep timestamps at their own resolution, so the stamp is
+	// compared with the file rather than with the clock.
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Stamp()
+	if err != nil {
+		t.Fatalf("Stamp: %v", err)
+	}
+	if !got.Equal(info.ModTime()) {
+		t.Errorf("stamp = %s, want the file's %s", got, info.ModTime())
+	}
+	if !got.After(before) {
+		t.Errorf("a saved config must stamp later than none at all: %s", got)
+	}
+}

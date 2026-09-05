@@ -25,10 +25,6 @@ import (
 
 const initTimeout = 15 * time.Second
 
-// inboundCheckTimeout is how long setup waits for the user to send the bot
-// a message. Generous: they have to pick up their phone.
-const inboundCheckTimeout = 2 * time.Minute
-
 // registerTimeout bounds the QR flow generously. The code Feishu issues
 // lives about ten minutes and reports its own expiry, so this is only a
 // backstop against a poll that never returns.
@@ -361,29 +357,49 @@ func checkReturnPath(how setupPath) {
 	tui.Blank()
 	tui.Step("Checking that Feishu can reach this computer")
 	tui.Blank()
-	if err := daemon.EnsureRunning(); err != nil {
+	// EnsureCurrent, not EnsureRunning: setup has just rewritten the
+	// config, and a daemon left over from before it holds the return path
+	// open for the previous Feishu app.
+	if err := daemon.EnsureCurrent(); err != nil {
 		tui.Fail("Could not start the Claude Companion daemon")
 		tui.Detail(err.Error())
 		return
 	}
 	tui.Info("Send any message to the Claude Companion bot in Feishu now.")
-	tui.Detail(fmt.Sprintf("waiting up to %s", inboundCheckTimeout))
+	tui.Detail(fmt.Sprintf("waiting up to %s", ipc.InboundProbeWait))
 
-	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, inboundCheckTimeout)
+	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, ipc.InboundProbeWait+ipc.InboundProbeGrace)
 	if err != nil {
 		explainNoInbound(how, err)
 		return
 	}
-	var ack ipc.Ack
-	if err := env.Into(&ack); err != nil {
+	var proof ipc.InboundProof
+	if err := env.Into(&proof); err != nil {
 		explainNoInbound(how, err)
 		return
 	}
-	if !ack.OK {
-		explainNoInbound(how, errors.New(ack.Err))
-		return
+	switch {
+	case proof.OK:
+		tui.Done("Message received - Feishu can reach this computer")
+	case proof.Stranger:
+		explainStranger(proof.Err)
+	default:
+		explainNoInbound(how, errors.New(proof.Err))
 	}
-	tui.Done("Message received - Feishu can reach this computer")
+}
+
+// explainStranger is the good news and the bad news together: the
+// connection works, and it is set up for the wrong account. Nothing about
+// the Feishu app needs touching, so none of the console advice applies.
+func explainStranger(reason string) {
+	tui.Warn("A message arrived from another Feishu account")
+	tui.Detail(reason)
+	tui.Blank()
+	tui.Detail("Feishu can reach this computer, but Claude Companion answers only to its\n" +
+		"owner - so the messages you send are being dropped. Feishu ids belong to\n" +
+		"one app, so an id from an earlier app will not match this one.")
+	tui.Blank()
+	tui.Info("Re-run %s and scan with the account you message from.", tui.Code("claude-companion init"))
 }
 
 // explainNoInbound names what to do about a return path that stayed

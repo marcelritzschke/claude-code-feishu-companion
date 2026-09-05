@@ -67,7 +67,13 @@ type Daemon struct {
 
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
-	inboundWaiters []chan struct{}
+	inboundWaiters []chan inboundProof
+
+	// configStamp is when the config file this daemon read was last
+	// written. It is reported on status so that a caller holding a newer
+	// config knows this daemon predates it - the Feishu connection is made
+	// once, at startup, from whatever the file said then.
+	configStamp time.Time
 
 	stop chan struct{}
 	once sync.Once
@@ -87,6 +93,8 @@ type inbound interface {
 	Run(ctx context.Context) error
 	Messages() <-chan feishu.Message
 	Actions() <-chan feishu.CardAction
+	// Strangers reports events dropped for coming from another account.
+	Strangers() <-chan string
 }
 
 // prompt is one attention card still standing: a permission decision the
@@ -108,6 +116,17 @@ const (
 	promptPermission = "permission"
 	promptQuestion   = "question"
 )
+
+// inboundProof is what actually arrived from Feishu, for a caller waiting
+// to find out whether the return path works.
+type inboundProof struct {
+	// stranger is true when the event came from an account other than the
+	// configured owner: Feishu reached this computer, and this computer
+	// answers to somebody else.
+	stranger bool
+	// from is the sender id of a stranger's event, empty otherwise.
+	from string
+}
 
 // delivery is a message pushed into a session, waiting for proof it landed.
 type delivery struct {
@@ -138,12 +157,17 @@ func Run(ctx context.Context, version string) error {
 	if err != nil {
 		return err
 	}
+	stamp, err := config.Stamp()
+	if err != nil {
+		return err
+	}
 	out, err := feishu.New(cfg)
 	if err != nil {
 		return err
 	}
 
 	d := New(cfg, out, nil, version)
+	d.configStamp = stamp
 	if cfg.RemoteEnabled() {
 		d.in = feishu.NewInbound(cfg)
 	}
@@ -245,11 +269,16 @@ func (d *Daemon) readInbound(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case msg := <-d.in.Messages():
-			d.notifyInboundWaiters()
+			d.notifyInboundWaiters(inboundProof{})
 			d.onMessage(ctx, msg)
 		case action := <-d.in.Actions():
-			d.notifyInboundWaiters()
+			d.notifyInboundWaiters(inboundProof{})
 			d.onCardAction(ctx, action)
+		case from := <-d.in.Strangers():
+			// Nothing is done with a stranger's event, but somebody
+			// waiting to find out whether Feishu can reach this computer
+			// has their answer: it can.
+			d.notifyInboundWaiters(inboundProof{stranger: true, from: from})
 		}
 	}
 }
@@ -284,7 +313,7 @@ func (d *Daemon) serve(ctx context.Context, conn *ipc.Conn) {
 	case ipc.TypeHook:
 		d.serveHook(ctx, conn, env)
 	case ipc.TypeStatus:
-		d.reply(conn, ipc.Ack{OK: true})
+		d.replyStatus(conn)
 	case ipc.TypeStop:
 		d.reply(conn, ipc.Ack{OK: true})
 		d.halt()
@@ -292,6 +321,14 @@ func (d *Daemon) serve(ctx context.Context, conn *ipc.Conn) {
 		d.serveAwaitInbound(ctx, conn)
 	default:
 		d.reply(conn, ipc.Ack{Err: "unknown request " + env.Type})
+	}
+}
+
+// replyStatus says that this daemon is answering, and which configuration
+// it is answering with.
+func (d *Daemon) replyStatus(conn *ipc.Conn) {
+	if err := conn.Write(ipc.TypeAck, ipc.Status{OK: true, ConfigStamp: d.configStamp}); err != nil {
+		debuglog.Printf("reply: %v", err)
 	}
 }
 
@@ -319,41 +356,57 @@ func (d *Daemon) housekeep(ctx context.Context) {
 	}
 }
 
-// serveAwaitInbound answers once a Feishu message reaches this machine,
-// which is the only proof that the return path really works. Setup uses it
-// to check the connection while the user is still there to fix it.
+// serveAwaitInbound answers once something reaches this machine from
+// Feishu, which is the only proof that the return path really works. Setup
+// uses it to check the connection while the user is still there to fix it.
 func (d *Daemon) serveAwaitInbound(ctx context.Context, conn *ipc.Conn) {
 	if d.in == nil {
-		d.reply(conn, ipc.Ack{Err: "remote continuation is switched off"})
+		d.replyProof(conn, ipc.InboundProof{Err: "remote continuation is switched off"})
 		return
 	}
-	waiter := make(chan struct{}, 1)
+	waiter := make(chan inboundProof, 1)
 	d.mu.Lock()
 	d.inboundWaiters = append(d.inboundWaiters, waiter)
 	d.mu.Unlock()
 
 	select {
-	case <-waiter:
-		d.reply(conn, ipc.Ack{OK: true})
+	case proof := <-waiter:
+		if proof.stranger {
+			d.replyProof(conn, ipc.InboundProof{Stranger: true, Err: strangerReason(proof.from, d.cfg.OpenID)})
+			return
+		}
+		d.replyProof(conn, ipc.InboundProof{OK: true})
 	case <-ctx.Done():
-		d.reply(conn, ipc.Ack{Err: "the daemon stopped"})
-	case <-time.After(inboundProbeTimeout):
-		d.reply(conn, ipc.Ack{Err: "no message arrived"})
+		d.replyProof(conn, ipc.InboundProof{Err: "the daemon stopped"})
+	case <-time.After(ipc.InboundProbeWait):
+		d.replyProof(conn, ipc.InboundProof{Err: "no message arrived"})
 	}
 }
 
-// inboundProbeTimeout is how long setup waits for the user to send the bot
-// a message.
-const inboundProbeTimeout = 90 * time.Second
+// strangerReason names both accounts, because the fix is to set this
+// computer up for the one the user actually messages from - and Feishu ids
+// are per app, so the configured one can be a real id from the wrong app.
+func strangerReason(from, want string) string {
+	if from == "" {
+		return "a message arrived, but from a Feishu account other than " + want
+	}
+	return "a message arrived from " + from + ", but this computer answers only to " + want
+}
 
-func (d *Daemon) notifyInboundWaiters() {
+func (d *Daemon) replyProof(conn *ipc.Conn, proof ipc.InboundProof) {
+	if err := conn.Write(ipc.TypeAck, proof); err != nil {
+		debuglog.Printf("reply: %v", err)
+	}
+}
+
+func (d *Daemon) notifyInboundWaiters(proof inboundProof) {
 	d.mu.Lock()
 	waiters := d.inboundWaiters
 	d.inboundWaiters = nil
 	d.mu.Unlock()
 	for _, w := range waiters {
 		select {
-		case w <- struct{}{}:
+		case w <- proof:
 		default:
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -127,10 +128,27 @@ func (l *link) sent() []string {
 	return append([]string(nil), l.injected...)
 }
 
+// private points every path the daemon uses at a directory of the test's
+// own, so a test never disturbs the user's running daemon.
+//
+// It uses a short-named MkdirTemp rather than t.TempDir(): t.TempDir()
+// nests the full test name under the OS temp dir, and on macOS that
+// combination routinely exceeds the ~104-byte length unix domain sockets
+// allow for sun_path, so Listen fails with "bind: invalid argument".
+func private(t *testing.T) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "wl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Setenv("CLAUDE_COMPANION_STATE_DIR", dir)
+}
+
 // fixture builds a daemon with one attached session, wired to a recorder.
 func fixture(t *testing.T, remote session.Remote) (*Daemon, *recorder, *link) {
 	t.Helper()
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	rec := newRecorder()
 	d := New(&config.Config{
 		Notify: config.NotifyImportant,

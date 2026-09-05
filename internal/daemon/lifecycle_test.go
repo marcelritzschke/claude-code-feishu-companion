@@ -58,7 +58,7 @@ func writeConfig(t *testing.T, at time.Time) {
 // A daemon started before setup rewrote the config holds the Feishu
 // connection for credentials that are gone. It has to go.
 func TestADaemonOlderThanTheConfigIsReplaced(t *testing.T) {
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	writeConfig(t, time.Now())
 	_, stopped := runningDaemon(t, time.Now().Add(-time.Hour))
 
@@ -82,7 +82,7 @@ func TestADaemonOlderThanTheConfigIsReplaced(t *testing.T) {
 // A daemon that read the configuration that is on disk is left alone:
 // restarting it would take the sessions attached to it down with it.
 func TestACurrentDaemonIsLeftAlone(t *testing.T) {
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	written := time.Now().Add(-time.Hour)
 	writeConfig(t, written)
 	runningDaemon(t, written.Add(time.Second))
@@ -101,7 +101,7 @@ func TestACurrentDaemonIsLeftAlone(t *testing.T) {
 
 // Nothing to replace is not a failure: setup starts one either way.
 func TestNoDaemonIsNothingToReplace(t *testing.T) {
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	writeConfig(t, time.Now())
 
 	replaced, err := replaceIfStale()
@@ -118,7 +118,7 @@ func TestNoDaemonIsNothingToReplace(t *testing.T) {
 // the whole time. A replacement started in that window would be turned
 // away by the lock, so the wait has to outlast it.
 func TestWaitingOutADaemonThatIsStillHoldingTheLock(t *testing.T) {
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	held, err := acquire()
 	if err != nil {
 		t.Fatal(err)

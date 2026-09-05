@@ -36,7 +36,7 @@ func (f *fakeInbound) Strangers() <-chan string          { return f.strangers }
 // same request the init flow makes, not by calling into the type.
 func serving(t *testing.T, in inbound) *Daemon {
 	t.Helper()
-	t.Setenv("CLAUDE_COMPANION_STATE_DIR", t.TempDir())
+	private(t)
 	d := New(&config.Config{
 		OpenID: "ou_owner",
 		Notify: config.NotifyImportant,

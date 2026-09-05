@@ -1,6 +1,11 @@
-// Command smoke renders every card Claude Companion can send and posts it
-// to Feishu, so a schema change is verified against the real renderer
-// rather than against a test's idea of one.
+// Command cardsmoke renders every card Claude Companion can build and
+// posts each one to Feishu, so a schema change is verified against the
+// real renderer rather than against a test's idea of one.
+//
+// It is not a simulation of a session. A session shows one card and
+// rewrites it; this posts every state as a separate message so they can
+// all be looked at side by side. The label on each line says which of the
+// three real cards that state belongs to.
 package main
 
 import (
@@ -93,38 +98,42 @@ func main() {
 	notifyOnly := sess(session.Working)
 	notifyOnly.Remote = session.Notifications
 
+	// The prefix names the one message this state belongs to in a real
+	// session: session/... states rewrite a single card from working
+	// through to its outcome, permission/... likewise, and reply/... are
+	// the only ones that are genuinely separate messages.
 	cards := []struct {
 		name string
 		fn   func() (string, error)
 	}{
-		{"SessionCard/working", func() (string, error) { return notify.SessionCard(sess(session.Working), t, view) }},
-		{"SessionCard/waiting", func() (string, error) { return notify.SessionCard(sess(session.Waiting), t, view) }},
-		{"SessionCard/notify-only", func() (string, error) { return notify.SessionCard(notifyOnly, t, view) }},
-		{"InterruptedSessionCard", func() (string, error) { return notify.InterruptedSessionCard(sess(session.Idle), t) }},
-		{"SettledWatchCard/ok", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), t, "") }},
-		{"SettledWatchCard/failed", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), failed, "") }},
-		{"WatchStoppedCard", func() (string, error) { return notify.WatchStoppedCard(sess(session.Working), t, "") }},
-		{"PermissionCard", func() (string, error) {
+		{"session/working", func() (string, error) { return notify.SessionCard(sess(session.Working), t, view) }},
+		{"session/waiting", func() (string, error) { return notify.SessionCard(sess(session.Waiting), t, view) }},
+		{"session/notify-only", func() (string, error) { return notify.SessionCard(notifyOnly, t, view) }},
+		{"session/interrupted", func() (string, error) { return notify.InterruptedSessionCard(sess(session.Idle), t) }},
+		{"session/settled-ok", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), t, "") }},
+		{"session/settled-failed", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), failed, "") }},
+		{"session/no-longer-live", func() (string, error) { return notify.WatchStoppedCard(sess(session.Working), t, "") }},
+		{"permission/asked-by-hook", func() (string, error) {
 			return notify.PermissionCard(payload(hook.EventPreToolUse), t, notify.Options{})
 		}},
-		{"QuestionCard", func() (string, error) { return notify.QuestionCard(questionPayload(), t, notify.Options{}) }},
-		{"CompletionCard", func() (string, error) {
+		{"question/asked", func() (string, error) { return notify.QuestionCard(questionPayload(), t, notify.Options{}) }},
+		{"session/completed", func() (string, error) {
 			return notify.CompletionCard(payload(hook.EventStop), t, notify.Options{ContinueSession: "s1"})
 		}},
-		{"FailureCard", func() (string, error) {
+		{"session/failed", func() (string, error) {
 			return notify.FailureCard(payload(hook.EventStop), failed, notify.Options{ContinueSession: "s1"})
 		}},
-		{"ProgressCard", func() (string, error) { return notify.ProgressCard(payload(hook.EventStop), t, notify.Options{}) }},
-		{"QuestionAnsweredCard", func() (string, error) { return notify.QuestionAnsweredCard(sess(session.Idle)) }},
-		{"OverviewCard", func() (string, error) {
+		{"session/progress", func() (string, error) { return notify.ProgressCard(payload(hook.EventStop), t, notify.Options{}) }},
+		{"question/answered", func() (string, error) { return notify.QuestionAnsweredCard(sess(session.Idle)) }},
+		{"reply/sessions", func() (string, error) {
 			return notify.OverviewCard([]session.Session{sess(session.Working), notifyOnly})
 		}},
-		{"SelectedCard", func() (string, error) { return notify.SelectedCard(sess(session.Working)) }},
-		{"PermissionRelayCard", func() (string, error) { return notify.PermissionRelayCard(sess(session.Waiting), req) }},
-		{"PermissionAnsweredCard", func() (string, error) {
+		{"reply/selected", func() (string, error) { return notify.SelectedCard(sess(session.Working)) }},
+		{"permission/asked-relayed", func() (string, error) { return notify.PermissionRelayCard(sess(session.Waiting), req) }},
+		{"permission/answered", func() (string, error) {
 			return notify.PermissionAnsweredCard(sess(session.Working), req, notify.VerdictAllow)
 		}},
-		{"PermissionHandledLocallyCard", func() (string, error) {
+		{"permission/answered-locally", func() (string, error) {
 			return notify.PermissionHandledLocallyCard(sess(session.Working), req)
 		}},
 	}
@@ -146,7 +155,7 @@ func main() {
 		cards = append(cards, struct {
 			name string
 			fn   func() (string, error)
-		}{fmt.Sprintf("SessionCard/%d-steps", len(long.Steps)), func() (string, error) {
+		}{fmt.Sprintf("session/working-%d-steps", len(long.Steps)), func() (string, error) {
 			return notify.SessionCard(sess(session.Working), long, view)
 		}})
 	}
@@ -169,7 +178,8 @@ func main() {
 		fmt.Printf("%-30s ok (%d bytes) %s\n", cd.name, len(body), id)
 		ids = append(ids, id)
 	}
-	fmt.Printf("\n%d/%d accepted\n", len(cards)-bad, len(cards))
+	fmt.Printf("\n%d/%d accepted. In a session these are three cards, not %d messages.\n",
+		len(cards)-bad, len(cards), len(cards))
 	if len(os.Args) > 1 && os.Args[1] == "-keep" {
 		fmt.Println("cards left standing for visual review")
 		return

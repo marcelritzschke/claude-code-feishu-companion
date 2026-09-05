@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write"
+    ],
+    "ask": [
+      "Bash(go test ./...)"
+    ]
+  },
+  "sandbox": {
+    "enabled": false
+  }
+}

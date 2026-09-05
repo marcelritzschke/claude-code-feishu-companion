@@ -86,6 +86,10 @@ func main() {
 		fmt.Println("client:", err)
 		os.Exit(1)
 	}
+	if callbackMode() {
+		os.Exit(checkCallback(cfg, c))
+	}
+
 	ctx := context.Background()
 	t := turn()
 	view := notify.SessionView{ActivityAt: time.Now().Add(-8 * time.Second), Interruptible: true,

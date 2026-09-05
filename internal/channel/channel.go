@@ -32,11 +32,6 @@ import (
 // every event.
 const ServerName = "claude-companion"
 
-// LegacyServerName is the MCP server name used before the project's rename
-// from wirelark. Recognising it lets an upgrade clean up the old
-// registration instead of leaving it alongside the new one.
-const LegacyServerName = "wirelark"
-
 // Version is what the channel reports as its MCP server version.
 const Version = "2.0.0"
 

@@ -32,22 +32,21 @@ const fixture = `{
   "theme": "dark"
 }`
 
-// legacyFixture is a settings.json written by an older, pre-rename install
-// (back when the binary was named wirelark): the three events attention mode no longer
-// notifies on.
+// legacyFixture is a settings.json left by an older install, registered
+// on the three events attention mode no longer notifies on.
 const legacyFixture = `{
   "hooks": {
     "Notification": [
-      {"matcher": "permission_prompt", "hooks": [{"type": "command", "command": "/bin/wirelark send", "timeout": 5, "async": true}]}
+      {"matcher": "permission_prompt", "hooks": [{"type": "command", "command": "/bin/claude-companion send", "timeout": 5, "async": true}]}
     ],
     "Stop": [
-      {"hooks": [{"type": "command", "command": "/bin/wirelark send", "timeout": 5, "async": true}]}
+      {"hooks": [{"type": "command", "command": "/bin/claude-companion send", "timeout": 5, "async": true}]}
     ],
     "SessionStart": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "/bin/wirelark send", "timeout": 5, "async": true}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": "/bin/claude-companion send", "timeout": 5, "async": true}]}
     ],
     "SessionEnd": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "/bin/wirelark send", "timeout": 5, "async": true}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": "/bin/claude-companion send", "timeout": 5, "async": true}]}
     ]
   }
 }`
@@ -243,23 +242,23 @@ func TestRegisterMalformedRejected(t *testing.T) {
 }
 
 // relocatedFixture is a settings.json left by a Claude Companion install
-// (under its former name, wirelark) that lived at a different path, next
-// to an unrelated hook that must survive.
+// that lived at a different path, next to an unrelated hook that must
+// survive.
 const relocatedFixture = `{
   "hooks": {
     "Stop": [
-      {"hooks": [{"type": "command", "command": "\"/old/place/wirelark\" send", "async": true}]},
+      {"hooks": [{"type": "command", "command": "\"/old/place/claude-companion\" send", "async": true}]},
       {"hooks": [{"type": "command", "command": "/usr/bin/other-tool run"}]}
     ],
     "PermissionRequest": [
-      {"hooks": [{"type": "command", "command": "C:\\tools\\wirelark.exe send", "async": true}]}
+      {"hooks": [{"type": "command", "command": "C:\\tools\\claude-companion.exe send", "async": true}]}
     ]
   }
 }`
 
 func TestRegisterReplacesRelocatedInstall(t *testing.T) {
 	p := writeFixture(t, relocatedFixture)
-	cmd := `"/new/place/wirelark" send`
+	cmd := `"/new/place/claude-companion" send`
 	if _, err := Register(p, cmd, Settings{Progress: true, Remote: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -271,19 +270,19 @@ func TestRegisterReplacesRelocatedInstall(t *testing.T) {
 	if len(stop) != 2 {
 		t.Fatalf("Stop commands = %q", stop)
 	}
-	var wirelark, other int
+	var companion, other int
 	for _, c := range stop {
 		switch {
 		case c == cmd:
-			wirelark++
+			companion++
 		case c == "/usr/bin/other-tool run":
 			other++
 		default:
 			t.Errorf("unexpected Stop command %q", c)
 		}
 	}
-	if wirelark != 1 || other != 1 {
-		t.Errorf("Stop = %q, want one wirelark and one other-tool hook", stop)
+	if companion != 1 || other != 1 {
+		t.Errorf("Stop = %q, want one companion and one other-tool hook", stop)
 	}
 	if cmds := groupCommands(t, m, "PermissionRequest"); len(cmds) != 1 || cmds[0] != cmd {
 		t.Errorf("PermissionRequest = %q, want only %q", cmds, cmd)
@@ -349,10 +348,10 @@ func TestCompanionCommandRecognition(t *testing.T) {
 		`C:	ools\claude-companion.exe send`,
 		"claude-companion send",
 		"/usr/local/bin/claude-companion send --dry-run",
-		"/bin/wirelark send",
-		`"/home/u/go/bin/wirelark" send`,
-		`C:	ools\wirelark.exe send`,
-		"wirelark send",
+		"/bin/claude-companion send",
+		`"/home/u/go/bin/claude-companion" send`,
+		`C:	ools\claude-companion.exe send`,
+		"claude-companion send",
 	}
 	for _, c := range yes {
 		if !companionCommand.MatchString(c) {
@@ -364,9 +363,9 @@ func TestCompanionCommandRecognition(t *testing.T) {
 		"/opt/not-claude-companion send",
 		"/bin/claude-companion init",
 		"echo claude-companion",
-		"/opt/not-wirelark send",
-		"/bin/wirelark init",
-		"echo wirelark",
+		"/opt/not-claude-companion send",
+		"/bin/claude-companion init",
+		"echo claude-companion",
 	}
 	for _, c := range no {
 		if companionCommand.MatchString(c) {

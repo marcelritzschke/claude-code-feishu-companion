@@ -76,11 +76,9 @@ var managedEvents = []string{
 }
 
 // companionCommand matches a hook command that runs a Claude Companion
-// binary, whichever path it was installed at, under either the current
-// binary name or the project's former name (wirelark), so an upgrade from
-// an older install still cleans up after its predecessor instead of
-// double-registering.
-var companionCommand = regexp.MustCompile(`(?i)(?:^|[/\\"'])(?:claude-companion|wirelark)(?:\.exe)?["']?\s+send\b`)
+// binary, whichever path it was installed at, so reinstalling to a new
+// location replaces the old entry instead of double-registering.
+var companionCommand = regexp.MustCompile(`(?i)(?:^|[/\\"'])claude-companion(?:\.exe)?["']?\s+send\b`)
 
 // SettingsPath returns the user-level Claude Code settings.json path.
 func SettingsPath() (string, error) {

@@ -4,9 +4,7 @@
 package config
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,43 +144,17 @@ func Path() (string, error) {
 	return filepath.Join(dir, appDir, "config.toml"), nil
 }
 
-// appDir is the directory this program keeps its configuration in, and
-// legacyAppDir is what it was called before the project was renamed.
-const (
-	appDir       = "claude-companion"
-	legacyAppDir = "wirelark"
-)
-
-// legacyPath is where an install that predates the rename kept its config.
-// It is the only piece of Claude Companion state that cannot be rebuilt -
-// it holds the app credentials and the user's own id - so it is the only
-// one that is migrated. The private cache directory is deliberately left
-// alone: everything in it is either recreatable (the tenant token, the
-// daemon socket, the lock files) or a snapshot that heals on the next
-// event, and moving a directory that a running daemon holds a socket in
-// would break that daemon to save nothing.
-func legacyPath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve user config dir: %w", err)
-	}
-	return filepath.Join(dir, legacyAppDir, "config.toml"), nil
-}
+// appDir is the directory this program keeps its configuration in.
+const appDir = "claude-companion"
 
 // Load reads the config from Path, applying defaults for unset behavior
-// settings. An install that predates the rename is migrated on the way
-// past, so upgrading does not read as "never configured".
+// settings.
 func Load() (*Config, error) {
 	p, err := Path()
 	if err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(p)
-	if errors.Is(err, fs.ErrNotExist) {
-		if migrated, ok := adoptLegacyConfig(p); ok {
-			data, err = migrated, nil
-		}
-	}
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -192,41 +164,6 @@ func Load() (*Config, error) {
 	}
 	c.applyDefaults()
 	return &c, nil
-}
-
-// adoptLegacyConfig moves a pre-rename config to where this version looks
-// for it and returns its contents. It reports false whenever there is
-// nothing to adopt, which is the ordinary case.
-//
-// The move happens in two steps and the removal is last, so a failure
-// anywhere leaves the original in place: losing the app secret is the one
-// outcome this function exists to prevent.
-func adoptLegacyConfig(dest string) ([]byte, bool) {
-	// An explicit path means the caller said exactly which file it wants,
-	// and quietly filling it from somewhere else would be a surprise.
-	if os.Getenv(EnvVar) != "" {
-		return nil, false
-	}
-	legacy, err := legacyPath()
-	if err != nil {
-		return nil, false
-	}
-	data, err := os.ReadFile(legacy)
-	if err != nil {
-		return nil, false
-	}
-	if err := secfile.WriteAtomic(dest, data, 0o600); err != nil {
-		// The config is still readable where it is; report it rather than
-		// failing the load, and try again on the next run.
-		return data, true
-	}
-	if err := os.Remove(legacy); err != nil {
-		// Harmless: the new copy is authoritative from here on. Leaving
-		// the old one behind only means a stale secret on disk, which the
-		// next successful run will clear.
-		return data, true
-	}
-	return data, true
 }
 
 // applyDefaults fills in unset behavior settings and falls back to the

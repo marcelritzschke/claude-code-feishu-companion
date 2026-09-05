@@ -18,7 +18,7 @@ import (
 // never swallow the instruction.
 var overviewWords = map[string]bool{
 	"sessions": true, "/sessions": true, "session": true,
-	"claude-companion": true, "/claude-companion": true, "wirelark": true, "/wirelark": true,
+	"claude-companion": true, "/claude-companion": true,
 	"status": true, "/status": true,
 }
 

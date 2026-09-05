@@ -339,12 +339,10 @@ func registerChannel() error {
 		return nil
 	}
 
-	// Remove first so a Claude Companion installed at a different path, or
-	// registered under the project's former name (wirelark), is replaced
-	// rather than left alongside this one. Only Claude Companion's own
-	// entries are touched, and their absence is not an error.
+	// Remove first so a Claude Companion installed at a different path is
+	// replaced rather than left alongside this one. Only Claude
+	// Companion's own entry is touched, and its absence is not an error.
 	_ = exec.Command(claude, "mcp", "remove", "-s", "user", channel.ServerName).Run()
-	_ = exec.Command(claude, "mcp", "remove", "-s", "user", channel.LegacyServerName).Run()
 
 	if out, err := exec.Command(claude, addArgs...).CombinedOutput(); err != nil {
 		tui.Warn("claude mcp add failed - register it yourself with:")

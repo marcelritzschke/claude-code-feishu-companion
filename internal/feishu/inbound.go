@@ -67,6 +67,13 @@ func NewInbound(cfg *config.Config) *Inbound {
 	// The SDK logs to stdout by default. The daemon's own trace goes to the
 	// debug log, and a background service should not narrate itself into
 	// whatever stream it happened to inherit.
+	//
+	// One line escapes this: NewEventDispatcher builds its own stdout
+	// logger and prints "event-dispatch is ready" from inside the
+	// constructor, before any option can replace it. Suppressing that
+	// would mean swapping os.Stdout around the call, which is racy and
+	// buys nothing - a detached daemon's stdout is /dev/null, so the line
+	// only ever appears when something runs the client in the foreground.
 	handler.InitConfig(larkevent.WithLogger(discardLogger{}), larkevent.WithLogLevel(larkcore.LogLevelError))
 	in.ws = larkws.NewClient(cfg.AppID, cfg.AppSecret,
 		larkws.WithEventHandler(handler),

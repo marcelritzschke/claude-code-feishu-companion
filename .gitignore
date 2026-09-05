@@ -1,2 +1,7 @@
 # Built by "go build -o claude-companion ." per the README.
 /claude-companion
+
+# Scratch material for working things out - storyboards, throwaway demos.
+# Kept out of the repo deliberately: it has been swept in by "git add -A"
+# more than once.
+/prototype/

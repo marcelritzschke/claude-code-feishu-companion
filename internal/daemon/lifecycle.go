@@ -193,6 +193,20 @@ func waitUntilGone() error {
 	}
 }
 
+// Running reports whether a daemon is up, so a caller that has to take one
+// away can put back exactly what it found.
+func Running() bool { return ipc.Ping(dialTimeout) }
+
+// StopAndWait asks a running daemon to exit and returns once it has let go
+// of the single-daemon lock, which is what makes it safe to replace the
+// program on disk or to start a replacement.
+func StopAndWait() error {
+	if err := Stop(); err != nil {
+		return err
+	}
+	return waitUntilGone()
+}
+
 // Stop asks a running daemon to exit.
 func Stop() error {
 	env, err := ipc.Request(ipc.TypeStop, nil, dialTimeout)

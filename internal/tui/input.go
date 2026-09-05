@@ -49,6 +49,12 @@ var (
 	shared    *input
 )
 
+// Interactive reports whether there is a terminal to ask questions in. A
+// command that can go on without asking - by being told to assume the
+// answer - checks this first, so it can say which flag to pass rather than
+// failing on a question it could not put.
+func Interactive() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+
 // interactive returns the terminal session, opening it on first use.
 //
 // Raw mode stays on from the first question to the end of setup, so that
@@ -59,7 +65,7 @@ func interactive() (*input, error) {
 	inputOnce.Do(func() {
 		fd := int(os.Stdin.Fd())
 		if !term.IsTerminal(fd) {
-			inputErr = fmt.Errorf("claude-companion init needs a terminal to ask questions in")
+			inputErr = fmt.Errorf("claude-companion needs a terminal to ask questions in")
 			return
 		}
 		state, err := term.MakeRaw(fd)

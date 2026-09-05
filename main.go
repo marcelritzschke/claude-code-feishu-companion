@@ -60,7 +60,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "update":
-		os.Exit(runUpdate())
+		os.Exit(runUpdate(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	case "-v", "--version", "version":
@@ -80,7 +80,8 @@ func usage() {
   claude-companion daemon [--stop|--status]
                               run the bridge (started automatically when needed)
   claude-companion version            print the version
-  claude-companion update             check GitHub for a newer release
+  claude-companion update [--check|--yes]
+                              install the latest release (--check only reports)
 `)
 }
 

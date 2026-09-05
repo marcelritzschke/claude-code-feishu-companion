@@ -115,11 +115,28 @@ claude-companion daemon --status
 claude-companion daemon --stop
 ```
 
-Force a live update check, independent of the daemon's cache or schedule:
+Check for a newer release and install it, independent of the daemon's cache
+or schedule:
 
 ```sh
-claude-companion update
+claude-companion update           # check, then ask before installing
+claude-companion update --check   # report only, install nothing
+claude-companion update --yes     # install without asking
 ```
+
+The archive is downloaded from the GitHub release over HTTPS and verified
+against that release's `checksums.txt` before anything on disk is touched.
+The program is then replaced in place, which needs write access to the
+directory it lives in; a binary installed somewhere the user cannot write
+is refused before the download rather than after it.
+
+An install stops the daemon, replaces the binary, and starts the daemon
+again only if it was running to begin with. Two things it cannot cover: a
+Claude Code session that is already running keeps the `claude-companion
+channel` process it was given until that session restarts, and a permission
+card still waiting in Feishu is not answerable across the restart, because
+pending prompts live only in the daemon's memory. Hook processes are
+started per event, so they pick the new version up immediately.
 
 Render a notification without a configuration file or Feishu connection:
 

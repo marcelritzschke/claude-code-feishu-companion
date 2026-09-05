@@ -193,7 +193,7 @@ func readableTool(tool string) string {
 
 // describeActivity says what the turn is doing now, for the progress card.
 //
-// It deliberately narrates almost nothing. V1's noise policy rules out
+// It deliberately narrates almost nothing. The attention-mode noise policy rules out
 // reads, searches, and subagent runs, and a progress card must show
 // "meaningful progress, not individual internal actions" - so a shell
 // command (the spec's own example of current activity) is named, edits are

@@ -20,6 +20,21 @@ The core product principle is:
 
 **---**
 
+**## A note on version numbers**
+
+The V1 / V2 / V3 numbering below names *product stages*, not card schema
+versions. Feishu also numbers its card JSON schema (v1 and 2.0), and the two
+axes are unrelated. The code refers to the product stages by name rather than
+by number, to keep the collision out of the source:
+
+| Stage | Name used in code |
+|---|---|
+| V1 | attention mode |
+| V2 | remote continuation |
+| V3 | live companion |
+
+**---**
+
 **# V1 — Attention Mode**
 
 **## Goal**

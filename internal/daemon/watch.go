@@ -358,7 +358,8 @@ func (d *Daemon) refreshWatch(ctx context.Context, w *watch, s session.Session, 
 //
 // That is what the end of a turn wants: the completion notification is
 // about to rewrite the very same message into the turn's outcome, which is
-// the settled state V3 asks for and the card V1 already taught the user.
+// the settled state the live companion asks for and the attention card
+// already taught the user.
 func (d *Daemon) endWatch(sessionID string) *watch {
 	d.mu.Lock()
 	w, ok := d.watches[sessionID]
@@ -409,7 +410,7 @@ func (d *Daemon) closeWatch(ctx context.Context, sessionID, note string) {
 }
 
 // watching reports whether a session's live view is open, which is how the
-// V1 progress card knows to stand down: while the user is watching, the
+// attention-mode progress card knows to stand down: while the user is watching, the
 // live card is already the one card this turn gets.
 func (d *Daemon) watching(sessionID string) bool {
 	d.mu.Lock()

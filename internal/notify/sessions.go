@@ -10,7 +10,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
-// Caps for the V2 surfaces, in runes. A permission a user is about to
+// Caps for the remote-continuation surfaces, in runes. A permission a user is about to
 // approve is shown far more generously than anything else on a card,
 // because approving what you cannot see is the failure this feature must
 // not have.

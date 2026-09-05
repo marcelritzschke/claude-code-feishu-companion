@@ -39,7 +39,7 @@ type Turn struct {
 	Steps []Step
 	// Progress is the latest thing Claude said in prose this turn - what
 	// it is doing and why, in its own words. Thinking blocks are never
-	// part of it: V3 exposes progress, not reasoning.
+	// part of it: the live companion exposes progress, not reasoning.
 	Progress string
 	// Failed reports whether the turn ended in a state that needs the
 	// user: a validation command it ran was still failing at the end.

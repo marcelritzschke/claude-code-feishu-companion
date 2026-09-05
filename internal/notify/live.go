@@ -342,7 +342,7 @@ type act struct {
 // activityOf describes one tool call as a live-card item.
 //
 // Not every call earns a line. Bookkeeping the user never asked to see -
-// a todo list being rewritten - is left out entirely, which is the V3
+// a todo list being rewritten - is left out entirely, which is the live-companion
 // noise policy applied at its source.
 func activityOf(st transcript.Step) (act, bool) {
 	str := func(field string) string {

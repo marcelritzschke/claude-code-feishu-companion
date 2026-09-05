@@ -33,7 +33,7 @@ const fixture = `{
 }`
 
 // legacyFixture is a settings.json written by an older, pre-rename install
-// (back when the binary was named wirelark): the three events V1 no longer
+// (back when the binary was named wirelark): the three events attention mode no longer
 // notifies on.
 const legacyFixture = `{
   "hooks": {

@@ -180,7 +180,7 @@ func TestDescribeActivity(t *testing.T) {
 	}
 }
 
-// V1's noise policy rules these out: a progress card must show meaningful
+// The attention-mode noise policy rules these out: a progress card must show meaningful
 // progress, never "Claude read foo.go" or "Claude searched for X".
 func TestDescribeActivityNeverNarratesRoutineWork(t *testing.T) {
 	routine := []*transcript.ToolCall{

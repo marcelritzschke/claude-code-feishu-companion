@@ -39,11 +39,11 @@ const (
 
 // Switch is a plain on/off setting. It is spelled out rather than left a
 // bool because a missing value in a config file is indistinguishable from
-// false, and the two V2 settings default to on.
+// false, and the two remote-continuation settings default to on.
 type Switch string
 
 const (
-	// On is the default for both V2 settings.
+	// On is the default for both remote-continuation settings.
 	On Switch = "on"
 	// Off disables the setting.
 	Off Switch = "off"
@@ -119,7 +119,7 @@ type Config struct {
 	Detail DetailLevel `toml:"detail"`
 
 	// Remote is whether a session may be continued from Feishu at all.
-	// With it off, Claude Companion is exactly the V1 one-way notifier.
+	// With it off, Claude Companion is exactly the attention-mode one-way notifier.
 	Remote Switch `toml:"remote"`
 	// RemotePermissions is whether tool approvals may be answered from
 	// Feishu. It is separate from Remote because it is a different kind of

@@ -131,7 +131,7 @@ func TestFinishedTurnSettlesTheWatchedCard(t *testing.T) {
 	}
 }
 
-// While the user is watching, the V1 progress card would be a second live
+// While the user is watching, the attention-mode progress card would be a second live
 // card for the same turn saying less.
 func TestWatchingStandsDownTheProgressCard(t *testing.T) {
 	d, _, _ := fixture(t, session.Ready)

@@ -73,9 +73,15 @@ func fetchFrom(ctx context.Context, url string) (Release, error) {
 
 // IsDevBuild reports whether version identifies a build with nothing to
 // compare against: a plain `go build .` or `go run .` that received no
-// linker-injected version.
+// linker-injected version, and equally a build whose version names a
+// commit rather than a release - Go stamps those as a pseudo-version like
+// "1.0.2-0.20260903142707-2c23255c532b+dirty", which is not any release
+// and sorts below the 1.0.2 it borrows its digits from. Anything IsNewer
+// cannot compare belongs here, so a build is never silently reported as
+// up to date on a comparison that could not be made.
 func IsDevBuild(version string) bool {
-	return version == "" || version == "dev"
+	_, ok := parseVersion(version)
+	return !ok
 }
 
 // IsNewer reports whether candidate is a newer release than current. Both
@@ -100,8 +106,11 @@ func IsNewer(candidate, current string) bool {
 	return false
 }
 
-// parseVersion reads a "vMAJOR.MINOR.PATCH" tag (the "v" and trailing
-// components are optional; missing components default to 0).
+// parseVersion reads a "vMAJOR.MINOR.PATCH" release tag (the "v" and
+// trailing components are optional; missing components default to 0). A
+// version carrying anything else - a prerelease suffix, a pseudo-version's
+// timestamp and commit, a "+dirty" marker - is not a release and does not
+// parse.
 func parseVersion(v string) ([3]int, bool) {
 	var out [3]int
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")

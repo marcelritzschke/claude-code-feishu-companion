@@ -45,7 +45,7 @@ func runUpdate() int {
 
 	current := currentVersion()
 	if update.IsDevBuild(current) {
-		fmt.Printf("latest release is %s (this build has no version to compare against)\n", rel.Version)
+		fmt.Printf("latest release is %s (this build is %s, not a release, so there is nothing to compare against)\n", rel.Version, current)
 		return 0
 	}
 	if !update.IsNewer(rel.Version, current) {

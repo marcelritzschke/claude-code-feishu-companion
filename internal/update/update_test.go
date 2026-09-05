@@ -32,7 +32,7 @@ func TestIsNewer(t *testing.T) {
 }
 
 func TestIsDevBuild(t *testing.T) {
-	for _, v := range []string{"", "dev"} {
+	for _, v := range []string{"", "dev", "1.0.2-0.20260903142707-2c23255c532b+dirty", "1.4.0-rc1", "1.4.0+dirty"} {
 		if !IsDevBuild(v) {
 			t.Errorf("IsDevBuild(%q) = false, want true", v)
 		}

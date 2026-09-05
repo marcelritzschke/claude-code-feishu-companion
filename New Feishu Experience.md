@@ -75,9 +75,21 @@ Claude wants to run:
 go test ./...
 
 [ Allow once ]
-[ Allow for this session ]
 [ Deny ]
 ```
+
+There is no **Allow for this session**, and there cannot be one. Claude
+Code validates a relayed verdict against a closed enum:
+
+```text
+notifications/claude/channel/permission
+  params: { request_id: string, behavior: "allow" | "deny" }
+```
+
+A session-wide grant is not a value the protocol has, so the card offers
+the two answers that exist rather than a third that would be silently
+rejected. If Claude Code ever adds one, this is the card that should
+change first.
 
 The Permission Card generates an attention notification.
 
@@ -117,10 +129,23 @@ payments-api
 
 Which API should remain backwards compatible?
 
-[ v1 ]
-[ v2 ]
-[ Both ]
+A. v1
+B. v2
+C. Both
+
+This must currently be answered in Claude Code.
 ```
+
+The options are shown but not tappable. A permission prompt can be
+answered remotely because Claude Code relays it over the channel and
+accepts a verdict back; a question has no such path - there is no
+equivalent of `permission_request` for `AskUserQuestion`, so nothing a
+card did could reach the waiting dialog. Showing the options still earns
+its place: the user learns what is being asked, and whether it is worth
+walking back to the terminal for.
+
+The Question Card is therefore notification-only until Claude Code offers
+a way to answer one from outside the session.
 
 For open-ended questions:
 
@@ -173,17 +198,45 @@ Show only information useful to someone checking progress:
 - how recently meaningful activity occurred
 - final result when the turn completes
 
+### Show, but folded
+
+The card carries every step of the turn, and hides almost all of it.
+
+Plain steps are one line each - and a run of the same kind is one line for
+the run, so four reads are `Read 4 files`. The two things worth looking
+into keep a panel of their own: whatever is running right now, and whatever
+went wrong. A panel is shut until the user opens it.
+
+This is not a reversal of "do not turn Feishu into a terminal feed". A feed
+is a stream of messages that keep arriving; this is one card that quietly
+gets longer, and the reader sees only as much of it as they ask for. What
+made a full step list unacceptable was volume, and folding removes that
+objection.
+
+Whatever does not fit folds into a single shut panel that says how much it
+holds. The steps are never dropped: "what happened while I was away" is
+half of what this product answers.
+
 ### Do not show
 
 Do not expose:
 
-- every tool invocation
-- every file read
-- every search
-- raw shell output
+- raw shell output, or any other tool output
 - protocol events
 - token-by-token text
 - chain-of-thought or internal reasoning
+
+A step's panel shows its **input** - the command, the path, the pattern -
+and never its output. Input is bounded, and it is the question the user
+actually has when they open a step: what exactly did it run? Output is
+unbounded, and it is where a shell command's secrets would end up printed
+in a chat message.
+
+Reasoning stays off the card even though folding would hide it, because
+folding solves volume and reasoning has a second problem: it is not a
+commitment. Claude reasons its way towards approaches it then discards, and
+a user who reads a discarded plan on their phone and walks back to the
+terminal to argue with it has been misled by the card.
 
 The goal is not observability for debugging.
 

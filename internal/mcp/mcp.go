@@ -104,9 +104,25 @@ func (s *Server) PushEvent(content string, meta map[string]string) error {
 	})
 }
 
+// Behaviors a verdict may carry. The channel protocol accepts these two
+// and nothing else: Claude Code validates behavior against a closed enum,
+//
+//	params: { request_id: string, behavior: "allow" | "deny" }
+//
+// as of Claude Code 2.1.260. There is deliberately no third value for a
+// session-wide grant, so "allow for this session" cannot be offered from a
+// card however much a card might like to - see the note in the Feishu
+// experience spec. Anything else here is rejected by the other end.
+const (
+	BehaviorAllow = "allow"
+	BehaviorDeny  = "deny"
+)
+
 // SendVerdict answers a relayed permission request. Claude Code applies
 // whichever answer arrives first, this one or the local dialog's, and drops
 // the other; an id it has no open request for is discarded in silence.
+//
+// behavior must be BehaviorAllow or BehaviorDeny.
 func (s *Server) SendVerdict(requestID, behavior string) error {
 	return s.notify(MethodPermission, map[string]string{
 		"request_id": requestID,

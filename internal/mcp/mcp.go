@@ -111,8 +111,8 @@ func (s *Server) PushEvent(content string, meta map[string]string) error {
 //
 // as of Claude Code 2.1.260. There is deliberately no third value for a
 // session-wide grant, so "allow for this session" cannot be offered from a
-// card however much a card might like to - see the note in the Feishu
-// experience spec. Anything else here is rejected by the other end.
+// card however much a card might like to - see docs/feishu-experience.md.
+// Anything else here is rejected by the other end.
 const (
 	BehaviorAllow = "allow"
 	BehaviorDeny  = "deny"

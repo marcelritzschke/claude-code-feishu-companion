@@ -1,4 +1,4 @@
-# Wirelark Feishu Experience
+# Claude Companion Feishu Experience
 
 ## Goal
 
@@ -6,7 +6,7 @@ The Feishu experience should answer one question exceptionally well:
 
 > Is Claude still making progress, or does it need me?
 
-Wirelark should provide enough visibility to give the user confidence without turning Feishu into a terminal feed.
+Claude Companion should provide enough visibility to give the user confidence without turning Feishu into a terminal feed.
 
 The experience should remain quiet by default.
 
@@ -19,7 +19,7 @@ The Claude Code terminal remains the source of truth.
 
 ## Three card types
 
-Wirelark uses only three user-facing card types.
+Claude Companion uses only three user-facing card types.
 
 ### Session Card
 
@@ -112,7 +112,7 @@ or:
 ✕ Denied
 ```
 
-Only an authorized Wirelark user may make permission decisions.
+Only an authorized Claude Companion user may make permission decisions.
 
 ---
 
@@ -262,12 +262,12 @@ Working · 8m
 No new activity for 3m
 ```
 
-Wirelark should therefore communicate both:
+Claude Companion should therefore communicate both:
 
 - how long the turn has been running
 - how recently meaningful activity was observed
 
-A lack of recent activity is not automatically an error. It simply gives the user an honest indication of what Wirelark can currently observe.
+A lack of recent activity is not automatically an error. It simply gives the user an honest indication of what Claude Companion can currently observe.
 
 The card should never fake activity merely because its timer continues increasing.
 
@@ -405,9 +405,9 @@ It does **not** mean:
 - close the terminal
 - create another session
 
-This preserves Wirelark's product boundary:
+This preserves Claude Companion's product boundary:
 
-> Wirelark can interact with your Claude session, but it does not own its lifecycle.
+> Claude Companion can interact with your Claude session, but it does not own its lifecycle.
 
 No confirmation is necessary for interrupting a normal working turn, provided the action is restricted to an authorized user.
 
@@ -415,14 +415,14 @@ No confirmation is necessary for interrupting a normal working turn, provided th
 
 ## Notification-only sessions
 
-Sessions that Wirelark can observe but cannot remotely control must be shown honestly.
+Sessions that Claude Companion can observe but cannot remotely control must be shown honestly.
 
 Example:
 
 ```text
 ⚪ Working · Notifications only
 
-wirelark
+claude-companion
 Improve README
 
 Claude is still working locally.
@@ -432,7 +432,7 @@ Activity 12s ago
 [ Watch ]
 ```
 
-`Watch` enables a read-only live view when Wirelark can provide one.
+`Watch` enables a read-only live view when Claude Companion can provide one.
 
 The card must continue to make the limitation obvious:
 
@@ -446,7 +446,7 @@ Watching a session must never imply that remote continuation or remote permissio
 
 ## Notification policy
 
-Wirelark distinguishes **activity** from **attention**.
+Claude Companion distinguishes **activity** from **attention**.
 
 ### Quiet
 
@@ -477,7 +477,7 @@ A completed turn may update its Session Card without producing additional noise 
 
 Seeing a card and controlling the local Claude session are different privileges.
 
-Only an authorized Wirelark user should be able to:
+Only an authorized Claude Companion user should be able to:
 
 - send instructions to a session
 - answer Claude questions
@@ -497,7 +497,7 @@ The default personal experience should remain effectively:
 
 ## Chat as the dashboard
 
-Wirelark does not need a permanent Overview Card.
+Claude Companion does not need a permanent Overview Card.
 
 Each active Claude session has its own Session Card, and the Feishu conversation naturally becomes the activity surface.
 
@@ -517,7 +517,7 @@ send follow-up
 Session Card
 ```
 
-without entering a separate Wirelark interface.
+without entering a separate Claude Companion interface.
 
 ---
 
@@ -545,4 +545,4 @@ Finally:
 
 Everything else is detail.
 
-Wirelark should expose only enough of that detail to make the user confident that the local Claude Code session is alive, progressing, and still under their control.
+Claude Companion should expose only enough of that detail to make the user confident that the local Claude Code session is alive, progressing, and still under their control.

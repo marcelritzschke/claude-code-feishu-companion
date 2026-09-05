@@ -1110,7 +1110,7 @@ It should not answer:
 \> **Superseded in part.** The activity list is no longer kept short by
 \> discarding steps. Feishu's card schema 2.0 can fold, so the card carries
 \> every step of the turn with almost all of it collapsed. See
-\> `New Feishu Experience.md`, which is the current authority on card
+\> `feishu-experience.md`, which is the current authority on card
 \> behavior; what follows is the shape this was designed from.
 
 The same card updates in place.

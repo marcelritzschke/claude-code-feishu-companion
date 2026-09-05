@@ -32,17 +32,35 @@ func headerOf(t *testing.T, m map[string]any) (template, title, subtitle string)
 	return
 }
 
-// sections returns the card's div texts (sections) and note text (footer).
+// cardElements returns a card's body elements.
+func cardElements(t *testing.T, m map[string]any) []any {
+	t.Helper()
+	body, ok := m["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("card has no body: %v", m)
+	}
+	els, _ := body["elements"].([]any)
+	return els
+}
+
+// sections returns the card's body sections and its footer.
+//
+// The hard-break markers card() adds are undone here: they are how a
+// newline survives markdown rendering, not part of what the card says, and
+// a test asserting on content should not have to know about them.
 func sections(t *testing.T, m map[string]any) (divs []string, note string) {
 	t.Helper()
-	for _, e := range m["elements"].([]any) {
+	for _, e := range cardElements(t, m) {
 		el := e.(map[string]any)
-		switch el["tag"] {
-		case "div":
-			divs = append(divs, el["text"].(map[string]any)["content"].(string))
-		case "note":
-			note = el["elements"].([]any)[0].(map[string]any)["content"].(string)
+		if el["tag"] != "markdown" {
+			continue
 		}
+		content := strings.ReplaceAll(el["content"].(string), "  \n", "\n")
+		if el["text_size"] == textSizeNotation {
+			note = content
+			continue
+		}
+		divs = append(divs, content)
 	}
 	return
 }

@@ -10,31 +10,57 @@ import (
 )
 
 // buttonsOf returns the label and value of every button on a card.
+//
+// Schema 2.0 has no action container: a lone button is an element of its
+// own, and a row of them is a column_set, so both shapes are walked.
 func buttonsOf(t *testing.T, cardJSON string) []Button {
 	t.Helper()
 	var m struct {
-		Elements []struct {
-			Tag     string `json:"tag"`
-			Actions []struct {
-				Text struct {
-					Content string `json:"content"`
-				} `json:"text"`
-				Type  string `json:"type"`
-				Value Action `json:"value"`
-			} `json:"actions"`
-		} `json:"elements"`
+		Body struct {
+			Elements []json.RawMessage `json:"elements"`
+		} `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(cardJSON), &m); err != nil {
 		t.Fatalf("%v in %s", err, cardJSON)
 	}
+
 	var out []Button
-	for _, el := range m.Elements {
-		if el.Tag != "action" {
-			continue
+	var walk func(raw json.RawMessage)
+	walk = func(raw json.RawMessage) {
+		var el struct {
+			Tag  string `json:"tag"`
+			Text struct {
+				Content string `json:"content"`
+			} `json:"text"`
+			Type      string `json:"type"`
+			Behaviors []struct {
+				Type  string `json:"type"`
+				Value Action `json:"value"`
+			} `json:"behaviors"`
+			Columns []struct {
+				Elements []json.RawMessage `json:"elements"`
+			} `json:"columns"`
 		}
-		for _, a := range el.Actions {
-			out = append(out, Button{Label: a.Text.Content, Style: a.Type, Action: a.Value})
+		if err := json.Unmarshal(raw, &el); err != nil {
+			return
 		}
+		switch el.Tag {
+		case "button":
+			var action Action
+			if len(el.Behaviors) > 0 {
+				action = el.Behaviors[0].Value
+			}
+			out = append(out, Button{Label: el.Text.Content, Style: el.Type, Action: action})
+		case "column_set":
+			for _, col := range el.Columns {
+				for _, inner := range col.Elements {
+					walk(inner)
+				}
+			}
+		}
+	}
+	for _, raw := range m.Body.Elements {
+		walk(raw)
 	}
 	return out
 }
@@ -95,22 +121,19 @@ func TestOverviewShowsNoTechnicalIdentifiers(t *testing.T) {
 	// The session id travels in the button value, which is not shown; what
 	// the user reads must carry neither it nor the process id.
 	var m struct {
-		Elements []struct {
-			Tag  string `json:"tag"`
-			Text *struct {
+		Body struct {
+			Elements []struct {
+				Tag     string `json:"tag"`
 				Content string `json:"content"`
-			} `json:"text"`
-		} `json:"elements"`
+			} `json:"elements"`
+		} `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(card), &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, el := range m.Elements {
-		if el.Text == nil {
-			continue
-		}
-		if strings.Contains(el.Text.Content, "0198c0de") || strings.Contains(el.Text.Content, "4242") {
-			t.Errorf("the overview shows a technical identifier: %q", el.Text.Content)
+	for _, el := range m.Body.Elements {
+		if strings.Contains(el.Content, "0198c0de") || strings.Contains(el.Content, "4242") {
+			t.Errorf("the overview shows a technical identifier: %q", el.Content)
 		}
 	}
 }

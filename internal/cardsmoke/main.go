@@ -1,0 +1,159 @@
+// Command smoke renders every card Claude Companion can send and posts it
+// to Feishu, so a schema change is verified against the real renderer
+// rather than against a test's idea of one.
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
+)
+
+func turn() *transcript.Turn {
+	return &transcript.Turn{
+		Start:    time.Now().Add(-258 * time.Second),
+		Title:    "Fix token refresh",
+		Progress: "Consolidating refresh validation and checking the affected callers.",
+		Files:    []string{"session.go", "token.go"},
+		Tests: []transcript.TestRun{
+			{Command: "go test ./...", Passed: true},
+			{Command: "pytest -q tests/", Passed: false},
+		},
+		Steps: []transcript.Step{
+			{Tool: "Read", Input: map[string]any{"file_path": "/w/payments-api/refresh.go"}, Done: true},
+			{Tool: "Read", Input: map[string]any{"file_path": "/w/payments-api/token.go"}, Done: true},
+			{Tool: "Edit", Input: map[string]any{"file_path": "/w/payments-api/refresh.go"}, Done: true},
+			{Tool: "Bash", Input: map[string]any{"command": "go build ./..."}, Done: true, Errored: true,
+				Error: "refresh.go:42: undefined: validateOnce"},
+			{Tool: "Bash", Input: map[string]any{"command": "go test ./..."}},
+		},
+		LatestTool: &transcript.ToolCall{Name: "Bash", Input: map[string]any{"command": "go test ./..."}},
+	}
+}
+
+func payload(event string) *hook.Payload {
+	return &hook.Payload{
+		HookEventName: event, SessionID: "sess", Cwd: "/home/u/payments-api",
+		ToolName: "Bash", ToolInput: map[string]any{"command": "rm -rf ./build"},
+		LastAssistantMessage: "The refresh flow now rotates the token after every successful refresh and rejects reused tokens.",
+	}
+}
+
+// questionPayload is an AskUserQuestion the way Claude Code writes it.
+func questionPayload() *hook.Payload {
+	p := payload(hook.EventPreToolUse)
+	p.ToolName = "AskUserQuestion"
+	p.ToolInput = map[string]any{"questions": []any{map[string]any{
+		"question": "Which API should remain backwards compatible?",
+		"options": []any{
+			map[string]any{"label": "v1", "description": "Keep the current clients working"},
+			map[string]any{"label": "v2", "description": "Break v1, ship the new shape"},
+			map[string]any{"label": "Both", "description": "Dual-serve until the next release"},
+		},
+	}}}
+	return p
+}
+
+func sess(state session.State) session.Session {
+	return session.Session{
+		ID: "s1", Dir: "/home/u/payments-api", Title: "Fix token refresh",
+		State: state, Remote: session.Ready, PID: os.Getpid(),
+	}
+}
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Println("config:", err)
+		os.Exit(1)
+	}
+	c, err := feishu.New(cfg)
+	if err != nil {
+		fmt.Println("client:", err)
+		os.Exit(1)
+	}
+	ctx := context.Background()
+	t := turn()
+	view := notify.SessionView{ActivityAt: time.Now().Add(-8 * time.Second), Interruptible: true,
+		Notes: []string{"Allowed once · go test ./..."}}
+	req := mcp.PermissionRequest{RequestID: "r1", ToolName: "Bash",
+		Description: "Remove the build directory", InputPreview: "rm -rf ./build"}
+
+	failed := turn()
+	failed.Failed = true
+	notifyOnly := sess(session.Working)
+	notifyOnly.Remote = session.Notifications
+
+	cards := []struct {
+		name string
+		fn   func() (string, error)
+	}{
+		{"SessionCard/working", func() (string, error) { return notify.SessionCard(sess(session.Working), t, view) }},
+		{"SessionCard/waiting", func() (string, error) { return notify.SessionCard(sess(session.Waiting), t, view) }},
+		{"SessionCard/notify-only", func() (string, error) { return notify.SessionCard(notifyOnly, t, view) }},
+		{"InterruptedSessionCard", func() (string, error) { return notify.InterruptedSessionCard(sess(session.Idle), t) }},
+		{"SettledWatchCard/ok", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), t, "") }},
+		{"SettledWatchCard/failed", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), failed, "") }},
+		{"WatchStoppedCard", func() (string, error) { return notify.WatchStoppedCard(sess(session.Working), t, "") }},
+		{"PermissionCard", func() (string, error) {
+			return notify.PermissionCard(payload(hook.EventPreToolUse), t, notify.Options{})
+		}},
+		{"QuestionCard", func() (string, error) { return notify.QuestionCard(questionPayload(), t, notify.Options{}) }},
+		{"CompletionCard", func() (string, error) {
+			return notify.CompletionCard(payload(hook.EventStop), t, notify.Options{ContinueSession: "s1"})
+		}},
+		{"FailureCard", func() (string, error) {
+			return notify.FailureCard(payload(hook.EventStop), failed, notify.Options{ContinueSession: "s1"})
+		}},
+		{"ProgressCard", func() (string, error) { return notify.ProgressCard(payload(hook.EventStop), t, notify.Options{}) }},
+		{"QuestionAnsweredCard", func() (string, error) { return notify.QuestionAnsweredCard(sess(session.Idle)) }},
+		{"OverviewCard", func() (string, error) {
+			return notify.OverviewCard([]session.Session{sess(session.Working), notifyOnly})
+		}},
+		{"SelectedCard", func() (string, error) { return notify.SelectedCard(sess(session.Working)) }},
+		{"PermissionRelayCard", func() (string, error) { return notify.PermissionRelayCard(sess(session.Waiting), req) }},
+		{"PermissionAnsweredCard", func() (string, error) {
+			return notify.PermissionAnsweredCard(sess(session.Working), req, notify.VerdictAllow)
+		}},
+		{"PermissionHandledLocallyCard", func() (string, error) {
+			return notify.PermissionHandledLocallyCard(sess(session.Working), req)
+		}},
+	}
+
+	var ids []string
+	bad := 0
+	for _, cd := range cards {
+		body, err := cd.fn()
+		if err != nil {
+			fmt.Printf("%-30s BUILD FAILED %v\n", cd.name, err)
+			bad++
+			continue
+		}
+		id, err := c.SendCard(ctx, body)
+		if err != nil {
+			fmt.Printf("%-30s SEND FAILED %v\n", cd.name, err)
+			bad++
+			continue
+		}
+		fmt.Printf("%-30s ok (%d bytes) %s\n", cd.name, len(body), id)
+		ids = append(ids, id)
+	}
+	fmt.Printf("\n%d/%d accepted\n", len(cards)-bad, len(cards))
+	if len(os.Args) > 1 && os.Args[1] == "-keep" {
+		fmt.Println("cards left standing for visual review")
+		return
+	}
+	for _, id := range ids {
+		_ = c.DeleteMessage(ctx, id)
+	}
+	fmt.Println("recalled")
+}

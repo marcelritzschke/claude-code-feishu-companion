@@ -68,6 +68,22 @@ type Button struct {
 	// Style is Feishu's button emphasis: "primary", "danger", or "default".
 	Style  string
 	Action Action
+	// Confirm, when set, puts a dialog between the tap and the action.
+	Confirm *Confirm
+}
+
+// Confirm is the dialog Feishu shows before a button's action runs.
+//
+// It is for the button whose action cannot be taken back by tapping
+// again. A card is read on a phone, in a pocket, one-handed, and the
+// difference between reading a card and stopping the work described on it
+// should not be one mistaken tap.
+type Confirm struct {
+	// Title is the question, e.g. "Interrupt this turn?".
+	Title string
+	// Text says what happens if they go ahead - and, just as importantly,
+	// what does not.
+	Text string
 }
 
 // Button styles, named for what they mean rather than how they look.

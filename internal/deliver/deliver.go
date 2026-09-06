@@ -64,6 +64,12 @@ type Deliverer struct {
 	// Sent, when set, is told which Feishu message a card became, so a
 	// caller that may have to rewrite that card later knows which one it is.
 	Sent func(hookEvent, messageID string)
+	// Awaited says this turn answers a message the user sent from Feishu.
+	// They are not at the terminal, so the turn's outcome is reported
+	// however little work it took: staying quiet is right for a question
+	// answered in front of the person who asked it, and wrong here, where
+	// silence is indistinguishable from a message that never arrived.
+	Awaited bool
 }
 
 // Event delivers whatever the hook event calls for: an attention card, the
@@ -92,7 +98,11 @@ func (d *Deliverer) Event(turn *transcript.Turn, cfg *config.Config) {
 			break
 		}
 		card, err := notify.CompletionCard(p, turn, opts)
-		d.Settle(card, err, WithholdChatter(turn))
+		withhold := WithholdChatter(turn)
+		if d.Awaited {
+			withhold = AlwaysNotify
+		}
+		d.Settle(card, err, withhold)
 	case hook.EventStopFailure:
 		card, err := notify.FailureCard(p, turn, opts)
 		d.Settle(card, err, AlwaysNotify)

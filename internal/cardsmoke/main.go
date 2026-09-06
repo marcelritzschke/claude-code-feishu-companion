@@ -128,6 +128,10 @@ func main() {
 	}{
 		{"session/working", func() (string, error) { return notify.SessionCard(sess(session.Working), t, view) }},
 		{"session/waiting", func() (string, error) { return notify.SessionCard(sess(session.Waiting), t, view) }},
+		{"session/sent", func() (string, error) {
+			return notify.SessionCard(sess(session.Working), t,
+				notify.SessionView{ActivityAt: view.ActivityAt, Sent: "lgtm, ship it"})
+		}},
 		{"session/notify-only", func() (string, error) { return notify.SessionCard(notifyOnly, t, view) }},
 		{"session/interrupted", func() (string, error) { return notify.InterruptedSessionCard(sess(session.Idle), t) }},
 		{"session/settled-ok", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), t, "") }},

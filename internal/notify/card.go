@@ -104,10 +104,18 @@ type behavior struct {
 }
 
 type buttonElement struct {
-	Tag       string     `json:"tag"`
-	Text      *cardText  `json:"text"`
-	Type      string     `json:"type"`
-	Behaviors []behavior `json:"behaviors"`
+	Tag       string          `json:"tag"`
+	Text      *cardText       `json:"text"`
+	Type      string          `json:"type"`
+	Confirm   *confirmElement `json:"confirm,omitempty"`
+	Behaviors []behavior      `json:"behaviors"`
+}
+
+// confirmElement is Feishu's second-confirmation dialog: the tap opens it,
+// and the action runs only if the user goes ahead.
+type confirmElement struct {
+	Title *cardText `json:"title"`
+	Text  *cardText `json:"text"`
 }
 
 type inputElement struct {
@@ -147,12 +155,19 @@ func buttonOf(b Button) *buttonElement {
 	if style == "" {
 		style = styleDefault
 	}
-	return &buttonElement{
+	el := &buttonElement{
 		Tag:       "button",
 		Text:      plainText(b.Label),
 		Type:      style,
 		Behaviors: []behavior{{Type: "callback", Value: b.Action}},
 	}
+	if b.Confirm != nil {
+		el.Confirm = &confirmElement{
+			Title: plainText(b.Confirm.Title),
+			Text:  plainText(b.Confirm.Text),
+		}
+	}
+	return el
 }
 
 // buttonRow lays buttons out the way v1's action element did: side by
@@ -408,12 +423,30 @@ func chromeCost(sections int, buttons []Button, footer string) int {
 	}
 	switch {
 	case len(buttons) == 1:
-		cost += 2 // the button and its text
+		cost += buttonCost(buttons[0])
 	case len(buttons) > 1:
-		cost += 1 + 3*len(buttons) // column_set, then a column, button and text each
+		cost++ // the column_set holding the row
+		for _, b := range buttons {
+			cost += 1 + buttonCost(b) // a column each, around the button
+		}
 	}
 	if footer != "" {
 		cost++
+	}
+	return cost
+}
+
+// buttonCost is what one button spends against the element budget.
+func buttonCost(b Button) int {
+	cost := 2 // the button and its text
+	if b.Confirm != nil {
+		// The dialog's title and text are tagged objects of their own.
+		// Unlike the rest of this file's arithmetic these two are not
+		// measured against the live API, because the button that carries a
+		// dialog is on a card that never approaches the budget. Counting
+		// them when Feishu does not costs one folded step; not counting
+		// them when it does breaks the card, so they are counted.
+		cost += 2
 	}
 	return cost
 }

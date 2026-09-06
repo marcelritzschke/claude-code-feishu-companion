@@ -152,6 +152,11 @@ type delivery struct {
 	// queued is true when the message has a turn in front of it, and is
 	// therefore owed more patience than one sent to a resting session.
 	queued bool
+	// arrived records that the proof came in. The record outlives the
+	// proof because a second question is answered by the same fact: a turn
+	// that read a message from Feishu owes its outcome to a user who is
+	// not at the terminal, and that stays true until the turn ends.
+	arrived bool
 }
 
 // Run starts the daemon and blocks until it is stopped or ctx ends. Only

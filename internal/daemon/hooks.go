@@ -61,7 +61,7 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		d.settleStandingPrompt(ctx, s.ID)
 		d.confirmDelivery(s.ID)
 	}
-	var stranded bool
+	var stranded, awaited bool
 	switch p.HookEventName {
 	case hook.EventSessionEnd:
 		// The session is over: it must leave the overview, it must not
@@ -76,6 +76,10 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		// below arrives as a new message rather than as a silent rewrite
 		// of one the user has already scrolled past.
 		stranded = d.recallLiveCard(ctx, s.ID)
+		// A turn that read a message from Feishu answers somebody who is
+		// not at the terminal, so its outcome is reported however little
+		// work it took.
+		awaited = d.claimAwaited(s.ID)
 	case hook.EventPostToolUse, hook.EventPermissionRequest, hook.EventPreToolUse:
 		// The first sign of real work in a turn opens the session's live
 		// card; afterwards each event nudges it, so a state that needs the
@@ -89,6 +93,7 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		Sender:          d.out,
 		ContinueSession: continueTarget(s),
 		Skip:            d.skipEvent(s.ID),
+		Awaited:         awaited,
 		Sent: func(hookEvent, messageID string) {
 			d.recordHookPrompt(s.ID, hookEvent, messageID)
 		},

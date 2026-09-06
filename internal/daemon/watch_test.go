@@ -359,3 +359,16 @@ func TestWatchEndsWithItsSession(t *testing.T) {
 		t.Errorf("the card was left running after the session ended: %v", updates)
 	}
 }
+
+// replyOn types a message into the reply box of one standing card, the way
+// Feishu delivers it: a callback naming both the session and the card.
+func replyOn(t *testing.T, d *Daemon, messageID, text string) {
+	t.Helper()
+	value, err := json.Marshal(notify.Action{Kind: notify.ActionSay, Session: "sess-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.onCardAction(context.Background(), feishu.CardAction{
+		Value: value, Input: text, MessageID: messageID,
+	})
+}

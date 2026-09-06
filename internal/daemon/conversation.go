@@ -105,17 +105,35 @@ func (d *Daemon) pickFromOverview(text string) (string, bool) {
 	return listed[i], true
 }
 
-// sendToSession pushes the user's message into the session they selected,
-// and tells them what became of it.
+// sendToSession pushes a message typed in the conversation into the
+// session the user selected, and tells them what became of it.
+//
+// The conversation is where this has to be answered: the user typed into a
+// chat window and nothing else on their screen is about to change. A card
+// reply is answered on the card instead - see replyOnCard.
 func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text string) {
+	before := s.State
+	if !d.pushMessage(ctx, s, text) {
+		return
+	}
+	d.say(ctx, deliveryAnswer(s, before))
+}
+
+// pushMessage delivers one message into a session, reporting whether it
+// went.
+//
+// Everything it says is about something going wrong. What a delivery that
+// worked is acknowledged with is the caller's to decide, because the
+// answer belongs wherever the user was when they sent it.
+func (d *Daemon) pushMessage(ctx context.Context, s session.Session, text string) bool {
 	if !s.Remote.Continuable() {
 		debuglog.Printf("%s is %s; not delivering", s.Describe(), s.Remote)
 		d.say(ctx, s.Label()+" can only send you notifications. It was started without Claude Companion enabled, "+
 			"so it cannot receive messages. Open Claude Code to continue it.")
-		return
+		return false
 	}
 
-	// The state before the message is what the answer should describe: a
+	// The state before the message is what an answer should describe: a
 	// session that was mid-turn will not read this until that turn ends.
 	before := s.State
 
@@ -123,12 +141,19 @@ func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text stri
 		debuglog.Printf("deliver to %s: %v", s.Describe(), err)
 		d.reg.Downgrade(s.ID)
 		d.say(ctx, "Claude Companion could not reach "+s.Label()+". Your message was not delivered.")
-		return
+		return false
 	}
-	d.reg.MarkWorking(s.ID)
+	if before != session.Waiting {
+		// A session blocked on a decision is not working, and a message
+		// queued behind that decision does not unblock it. Recording it as
+		// working would make its card - which the user is very likely
+		// looking at, since they just typed into it - claim to be running
+		// the turn it is in fact still waiting to be allowed to start.
+		d.reg.MarkWorking(s.ID)
+	}
 	d.expectDelivery(s, before)
-	d.say(ctx, deliveryAnswer(s, before))
 	debuglog.Printf("delivered a message to %s", s.Describe())
+	return true
 }
 
 // deliveryAnswer says where the message went and when it will be read. The
@@ -182,20 +207,27 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 	case notify.ActionInterrupt:
 		d.interruptSession(ctx, act.Session)
 	case notify.ActionSay:
-		d.replyOnCard(ctx, act.Session, action.Input)
+		d.replyOnCard(ctx, act.Session, action.MessageID, action.Input)
 	default:
 		debuglog.Printf("ignoring unknown card action %q", act.Kind)
 	}
 }
 
 // replyOnCard sends what the user typed in a card's reply box to the
-// session that card is about.
+// session that card is about, and answers on that same card.
 //
 // It is the shortest path this product has: the card already names one
 // session, so there is nothing to select, nothing to number, and nothing
 // to guess. Everything after the routing is the ordinary send, so a card
 // reply and a typed message reach a session by exactly one road.
-func (d *Daemon) replyOnCard(ctx context.Context, id, text string) {
+//
+// The answer goes on the card rather than into the conversation. A card
+// reply is a card that visibly changes - the box empties, the state moves
+// on - and a chat line repeating what the card now says would be a second
+// message for one action. The one thing the card cannot show is a message
+// waiting behind work already running, so that alone is still said out
+// loud.
+func (d *Daemon) replyOnCard(ctx context.Context, id, messageID, text string) {
 	if text == "" {
 		return // an empty box submitted by accident
 	}
@@ -210,7 +242,28 @@ func (d *Daemon) replyOnCard(ctx context.Context, id, text string) {
 	// talking.
 	d.reg.Select(id)
 	debuglog.Printf("card reply to %s", s.Describe())
-	d.sendToSession(ctx, s, text)
+	before := s.State
+	if !d.pushMessage(ctx, s, text) {
+		return
+	}
+	d.adoptSessionCard(ctx, s.ID, messageID, sentOnCard(before, text))
+	if before != session.Idle {
+		d.say(ctx, deliveryAnswer(s, before))
+	}
+}
+
+// sentOnCard is what the card should stand in with until Claude picks the
+// message up, empty when it should show the session instead.
+//
+// A message that goes to a resting session has nothing true to show yet:
+// the transcript still describes the turn the user just replied to. A
+// message queued behind a turn already running is the opposite - that
+// turn is real, current, and exactly what the card should keep showing.
+func sentOnCard(before session.State, text string) string {
+	if before != session.Idle {
+		return ""
+	}
+	return text
 }
 
 // selectSession points the user's next messages at one session and says so.
@@ -335,8 +388,75 @@ func (d *Daemon) confirmDelivery(sessionID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if del, ok := d.awaiting[sessionID]; ok && del.transcript == "" {
-		delete(d.awaiting, sessionID)
+		del.arrived = true
 	}
+}
+
+// markArrived records the proof that a pushed message was read, and
+// hasArrived reads that record back. Both take the lock, because the proof
+// is written from two goroutines: the poller below, and a hook event for a
+// session whose transcript there is nothing to read.
+func (d *Daemon) markArrived(sessionID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if del, ok := d.awaiting[sessionID]; ok {
+		del.arrived = true
+	}
+}
+
+func (d *Daemon) hasArrived(sessionID string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	del, ok := d.awaiting[sessionID]
+	return ok && del.arrived
+}
+
+// claimAwaited reports that the turn now ending is the one that read a
+// message from Feishu, and forgets the delivery on the way out.
+//
+// It is what makes a two-word answer to a two-word message reach the
+// phone. Such a turn runs no tool and would otherwise be withheld as
+// conversation - which is the right rule for someone sitting at the
+// terminal watching the answer appear, and the wrong one for someone who
+// asked from a train and has no other way to know it was read.
+func (d *Daemon) claimAwaited(sessionID string) bool {
+	d.mu.Lock()
+	del, ok := d.awaiting[sessionID]
+	var arrived bool
+	var path string
+	var offset int64
+	if ok {
+		arrived, path, offset = del.arrived, del.transcript, del.offset
+	}
+	d.mu.Unlock()
+	if !ok {
+		return false
+	}
+	// The proof is looked for here rather than waited on, because a
+	// two-word answer to a two-word message finishes well inside the
+	// interval the pending messages are polled at. It is the same check
+	// expireDeliveries makes, taken at the one moment it decides anything -
+	// and taken outside the lock, because it reads a file.
+	if !arrived && !(path != "" && transcript.Delivered(path, offset, mcp.ServerName)) {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.awaiting, sessionID)
+	return true
+}
+
+// pendingFrom is how far a session's transcript had been written when the
+// message now in flight was pushed into it, which is where a card looks
+// to find out whether Claude has taken that message up. Zero when nothing
+// is in flight.
+func (d *Daemon) pendingFrom(sessionID string) int64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if del, ok := d.awaiting[sessionID]; ok {
+		return del.offset
+	}
+	return 0
 }
 
 // expireDeliveries tells the user about messages that went nowhere, and
@@ -355,11 +475,15 @@ func (d *Daemon) expireDeliveries(ctx context.Context) {
 		switch {
 		case !live:
 			d.settleDelivery(del.sessionID) // the session ended; nothing to report
+		case d.hasArrived(del.sessionID):
+			// Already proven. The record stays until the turn it started
+			// ends, which is what tells that turn it owes an outcome to a
+			// user who is not at the terminal.
 		case del.transcript == "":
 			// Nothing to read: hook activity is the only signal, and
 			// confirmDelivery is where it lands.
 		case transcript.Delivered(del.transcript, del.offset, mcp.ServerName):
-			d.settleDelivery(del.sessionID)
+			d.markArrived(del.sessionID)
 			debuglog.Printf("message to %s arrived", s.Describe())
 		case d.stillReaching(del, s):
 		default:
@@ -374,6 +498,8 @@ func (d *Daemon) expireDeliveries(ctx context.Context) {
 			continue
 		}
 		d.reg.Downgrade(del.sessionID)
+		d.abandonPendingCard(ctx, del.sessionID,
+			"Your message was not delivered, so this card has nothing to follow.")
 		d.say(ctx, "Claude Companion could not reach "+s.Label()+", and your message was not delivered.\n"+
 			"That session is not listening on the Claude Companion channel. Restart it with:\n"+
 			"claude --dangerously-load-development-channels server:"+mcp.ServerName)

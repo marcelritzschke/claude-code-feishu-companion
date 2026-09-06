@@ -33,6 +33,12 @@ type SessionView struct {
 	// answered permission card is recalled from the conversation, so the
 	// session card is where its outcome stays visible.
 	Notes []string
+	// Sent is a message pushed into this session from its own card that
+	// the session has not begun a turn for yet. While it is set, the turn
+	// the transcript describes is the one the user's message came after,
+	// so the card says the one thing that is true - the message went -
+	// rather than dressing up finished work as work in progress.
+	Sent string
 }
 
 // SessionCard is the one live representation of a Claude Code session:
@@ -41,10 +47,32 @@ type SessionView struct {
 // state change, and it stays quiet - attention is pushed by the separate
 // permission and question cards, never by this one.
 func SessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
-	if s.State == session.Waiting {
+	switch {
+	case view.Sent != "":
+		return sentSessionCard(s, view)
+	case s.State == session.Waiting:
 		return waitingSessionCard(s, turn, view)
 	}
 	return workingSessionCard(s, turn, view)
+}
+
+// sentSessionCard is the live card in the moment between a message being
+// pushed from it and Claude taking that message up.
+//
+// It exists because the transcript is one turn behind the user: the work
+// it describes is the work they just replied to. A card that showed it as
+// "Working" would put the previous turn's progress and the previous
+// turn's clock under a heading about the message just sent, which is the
+// most confusing thing a live card could say.
+func sentSessionCard(s session.Session, view SessionView) (string, error) {
+	bodies := []string{
+		"Your message is with Claude.",
+		"**You**\n\"" + truncateRunes(view.Sent, quoteCap) + "\"",
+		notesBody(view.Notes),
+	}
+	sections := append(proseOf(bodies), replyTo(continuable(s)))
+	return cardOf("blue", "🔵 Sent", s.Describe(), sections, nil,
+		"This card follows the turn as soon as Claude starts it.")
 }
 
 // workingSessionCard shows a turn in flight: the latest meaningful
@@ -66,8 +94,9 @@ func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 		footer = joinNotes(footer, "Notifications only — this session cannot be controlled from here.")
 	case view.Interruptible:
 		buttons = append(buttons, Button{
-			Label:  "Interrupt",
-			Action: Action{Kind: ActionInterrupt, Session: s.ID},
+			Label:   "Interrupt",
+			Action:  Action{Kind: ActionInterrupt, Session: s.ID},
+			Confirm: interruptConfirm,
 		})
 	}
 
@@ -80,6 +109,17 @@ func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 	tail := []Section{replyTo(continuable(s))}
 	sections := withActivity(fixed, turn.Steps, tail, buttons, footer)
 	return cardOf(template, title, s.Describe(), sections, buttons, footer)
+}
+
+// interruptConfirm is the dialog [ Interrupt ] opens instead of acting.
+//
+// The action itself is mild - it stops a turn and nothing else - but the
+// button sits on the card the user reads to check on their work, one tap
+// away from every scroll. What the dialog is really guarding against is
+// the accident, so it says both halves: what stops, and what does not.
+var interruptConfirm = &Confirm{
+	Title: "Stop this turn?",
+	Text:  "Claude stops what it is doing and the session goes back to its prompt. Nothing is closed, and nothing done so far is lost.",
 }
 
 // continuable is the session id a card may offer to talk to, empty when

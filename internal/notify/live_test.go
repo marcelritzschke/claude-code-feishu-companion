@@ -363,3 +363,87 @@ func TestRunningAndFailedActionsKeepTheirOwnLine(t *testing.T) {
 		t.Errorf("lines[2] = %q", lines[2])
 	}
 }
+
+// [ Interrupt ] sits on the card the user reads to check on their work,
+// one tap away from every scroll. It must ask before it acts.
+func TestInterruptAsksBeforeItStopsTheTurn(t *testing.T) {
+	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute), Progress: "Running the tests."}
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Body struct {
+			Elements []struct {
+				Tag     string `json:"tag"`
+				Confirm *struct {
+					Title struct{ Content string } `json:"title"`
+					Text  struct{ Content string } `json:"text"`
+				} `json:"confirm"`
+			} `json:"elements"`
+		} `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(card), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, el := range m.Body.Elements {
+		if el.Tag != "button" {
+			continue
+		}
+		if el.Confirm == nil {
+			t.Fatalf("[ Interrupt ] acts on the first tap: %s", card)
+		}
+		// The dialog has to say what does not happen too, or a user who
+		// reads it carefully still cannot tell what they are agreeing to.
+		if !strings.Contains(el.Confirm.Text.Content, "back to its prompt") {
+			t.Errorf("confirmation = %q, want it to say the session survives", el.Confirm.Text.Content)
+		}
+		return
+	}
+	t.Fatalf("the working card offers no [ Interrupt ] to guard: %s", card)
+}
+
+// Between a message being sent from a card and Claude taking it up, the
+// transcript still describes the turn the user was replying to. The card
+// says what it knows rather than passing that turn off as the new one.
+func TestSentCardStandsInForTheTurnItStarts(t *testing.T) {
+	// A finished turn, six minutes old: exactly what would be shown as
+	// "Working · 6m" if the card took the transcript at face value.
+	turn := &transcript.Turn{
+		Start:    time.Now().Add(-6 * time.Minute),
+		Progress: "Added refresh-token rotation.",
+		Steps:    []transcript.Step{step("Edit", map[string]any{"file_path": "/x/refresh.go"}, true, false, "")},
+	}
+	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Sent: "lgtm, ship it"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headerTitle(t, card); got != "🔵 Sent" {
+		t.Errorf("title = %q, want the state the session is actually in", got)
+	}
+	for _, want := range []string{"Your message is with Claude.", "lgtm, ship it", string(ActionSay)} {
+		if !strings.Contains(card, want) {
+			t.Errorf("sent card is missing %q: %s", want, card)
+		}
+	}
+	for _, unwanted := range []string{"Added refresh-token rotation.", "6m"} {
+		if strings.Contains(card, unwanted) {
+			t.Errorf("the sent card shows the previous turn's %q: %s", unwanted, card)
+		}
+	}
+}
+
+func headerTitle(t *testing.T, cardJSON string) string {
+	t.Helper()
+	var m struct {
+		Header struct {
+			Title struct {
+				Content string `json:"content"`
+			} `json:"title"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal([]byte(cardJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	return m.Header.Title.Content
+}

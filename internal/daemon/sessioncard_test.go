@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
@@ -420,4 +421,186 @@ func TestVerdictIsRecordedOnTheSessionCard(t *testing.T) {
 // mcpRequest is a relayed permission prompt with a shell command preview.
 func mcpRequest(id, command string) mcp.PermissionRequest {
 	return mcp.PermissionRequest{RequestID: id, ToolName: "Bash", InputPreview: command}
+}
+
+// answerNow appends what Claude Code writes when a session takes a message
+// from the Claude Companion channel and answers it without running
+// anything: no tool ran, because none was needed.
+//
+// The timestamps are of this moment, because how long the turn took is
+// half of what decides whether it is reported: a wordless answer old
+// enough to have been walked away from is reported anyway, and a turn
+// this test is about is seconds old.
+func answerNow(t *testing.T, path string) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	appendLines(t, path,
+		`{"type":"user","promptId":"p-2","timestamp":"`+now+`","message":{"role":"user","content":"<channel source=\"claude-companion\" project=\"payments-api\">\nlgtm\n</channel>"}}`+"\n"+
+			`{"type":"assistant","timestamp":"`+now+`","message":{"role":"assistant","content":[{"type":"text","text":"Merged and pushed."}]}}`+"\n")
+}
+
+// The failure this exists for: a completed card, a two-word reply typed
+// into it, and a turn short enough to need no tool. Such a turn does no
+// reportable work, so it is ordinarily withheld - which is right for
+// somebody at the terminal watching the answer appear, and leaves somebody
+// on a phone looking at an answer to the message before theirs.
+func TestFastAnswerToACardReplyStillReachesThePhone(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Added refresh-token rotation.",
+	})
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "✅ Completed") {
+		t.Fatalf("cards = %v, want the completion the user replies to", titles)
+	}
+	completed := rec.ids[0]
+
+	replyOn(t, d, completed, "lgtm")
+	defer d.closeWatch(context.Background(), "sess-1", "")
+
+	// Claude takes the message and answers it without running anything.
+	answerNow(t, path)
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Merged and pushed.",
+	})
+
+	titles := rec.titles(t)
+	if len(titles) != 2 || !strings.HasPrefix(titles[1], "✅ Completed") {
+		t.Fatalf("cards = %v, want the answer to reach the phone as its own card", titles)
+	}
+	if !strings.Contains(rec.cards[1], "Merged and pushed.") {
+		t.Errorf("the second card does not carry the new answer: %s", rec.cards[1])
+	}
+}
+
+// A turn nobody is waiting on from Feishu stays withheld: the rule that
+// keeps a conversational exchange off the phone is unchanged.
+func TestFastTurnNobodyAskedForStaysQuiet(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+	answerNow(t, path)
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Merged and pushed.",
+	})
+
+	if len(rec.cards) != 0 {
+		t.Errorf("cards = %v, want none for a turn that did no work", rec.titles(t))
+	}
+}
+
+// The box on a card keeps what was typed into it until the card is
+// rewritten, so the card the user replied on becomes their message's card.
+func TestCardReplyRewritesTheCardItWasTypedInto(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Added refresh-token rotation.",
+	})
+	completed := rec.ids[0]
+
+	replyOn(t, d, completed, "lgtm")
+	defer d.closeWatch(context.Background(), "sess-1", "")
+
+	updates := rec.updates[completed]
+	if len(updates) == 0 {
+		t.Fatal("the card the reply was typed into was never rewritten, so its box still holds the message")
+	}
+	if got := cardTitle(t, updates[len(updates)-1]); got != "🔵 Sent" {
+		t.Errorf("card = %q, want it to stand in for the turn the message starts", got)
+	}
+	if !strings.Contains(updates[len(updates)-1], "lgtm") {
+		t.Errorf("the card does not show what was sent: %s", updates[len(updates)-1])
+	}
+	if len(rec.cards) != 1 {
+		t.Errorf("cards = %v, want no second message for one reply", rec.titles(t))
+	}
+}
+
+// The card stands in only until Claude takes the message up; from then on
+// it is the live view of the turn, which is what the user asked to see.
+func TestTheSentCardBecomesTheTurnItStarts(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Added refresh-token rotation.",
+	})
+	completed := rec.ids[0]
+	replyOn(t, d, completed, "now run the tests")
+	defer d.closeWatch(context.Background(), "sess-1", "")
+
+	answerNow(t, path)
+	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
+		"transcript_path": path,
+		"tool_name":       "Bash",
+	})
+
+	updates := rec.updates[completed]
+	if got := cardTitle(t, updates[len(updates)-1]); !strings.HasPrefix(got, "🔵 Working") {
+		t.Errorf("card = %q, want the live view of the turn the message started", got)
+	}
+}
+
+// A session blocked on a decision is not working, and a message queued
+// behind that decision does not unblock it. The card the user just typed
+// into must not claim to be running a turn that has not started.
+func TestCardReplyToAWaitingSessionKeepsItWaiting(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+	defer d.closeWatch(context.Background(), "sess-1", "")
+
+	hookEvent(t, d, hook.EventPermissionRequest, map[string]any{
+		"transcript_path": path,
+		"tool_name":       "Bash",
+		"tool_input":      map[string]any{"command": "go test ./..."},
+	})
+	live := rec.ids[0]
+
+	replyOn(t, d, live, "go ahead once that is approved")
+
+	if s, _ := d.reg.Get("sess-1"); s.State != session.Waiting {
+		t.Errorf("state = %q, want the session still waiting on its decision", s.State)
+	}
+	updates := rec.updates[live]
+	if len(updates) == 0 {
+		t.Fatal("the card the reply was typed into was never rewritten")
+	}
+	if got := cardTitle(t, updates[len(updates)-1]); !strings.HasPrefix(got, "🟠 Waiting") {
+		t.Errorf("card = %q, want it to keep saying what the session is waiting for", got)
+	}
+	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "Queued") {
+		t.Errorf("answers = %v, want the queueing said out loud, since the card cannot show it", rec.texts)
+	}
+}
+
+// Two cards for one session is what this product does not do. Answering
+// from an older card makes that one the session's card, and takes the
+// other down.
+func TestCardReplyRecallsTheOtherCardStandingForTheSession(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+	defer d.closeWatch(context.Background(), "sess-1", "")
+
+	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
+		"transcript_path": path,
+		"tool_name":       "Read",
+	})
+	live := rec.ids[0]
+
+	replyOn(t, d, "om_older_card", "actually, do the mobile client first")
+
+	if len(rec.deleted) != 1 || rec.deleted[0] != live {
+		t.Errorf("recalled %v, want the card the user is no longer looking at (%s)", rec.deleted, live)
+	}
+	if got := rec.updates["om_older_card"]; len(got) == 0 {
+		t.Error("the card the reply came from did not become the session's card")
+	}
 }

@@ -69,6 +69,7 @@ func (d *Daemon) interruptSession(ctx context.Context, id string) {
 	// any permission or question card the stopped turn left open.
 	d.reg.MarkIdle(s.ID)
 	d.settleStandingPrompt(ctx, s.ID)
+	d.settleDelivery(s.ID) // this turn is not going to report an outcome
 	w := d.endWatch(s.ID)
 	d.releaseLiveCard(s.ID)
 	if w == nil || w.messageID == "" {

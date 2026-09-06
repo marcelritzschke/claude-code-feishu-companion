@@ -587,13 +587,18 @@ func TestCompletionOffersNoContinueForUnreachableSessions(t *testing.T) {
 // The reply box on a card is the shortest way to continue a session: what
 // the user types reaches that session, and that session becomes the one
 // they are talking to.
+//
+// Nothing is said in the conversation about it. The card the user typed
+// into is the card that answers them, and a chat line repeating what that
+// card now shows would be a second message for one action.
 func TestCardReplyReachesTheSessionItNames(t *testing.T) {
 	d, rec, l := fixture(t, session.Ready)
 
 	value, _ := json.Marshal(notify.Action{Kind: notify.ActionSay, Session: "sess-1"})
 	d.onCardAction(context.Background(), feishu.CardAction{
-		Value: value,
-		Input: "check the mobile client first",
+		Value:     value,
+		Input:     "check the mobile client first",
+		MessageID: "om_card",
 	})
 
 	if got := l.sent(); len(got) != 1 || got[0] != "check the mobile client first" {
@@ -602,8 +607,25 @@ func TestCardReplyReachesTheSessionItNames(t *testing.T) {
 	if s, ok := d.reg.Selected(); !ok || s.ID != "sess-1" {
 		t.Errorf("selected = %+v, want the session the card named", s)
 	}
-	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "Sent to") {
-		t.Errorf("answers = %v, want one confirmation of where it went", rec.texts)
+	if len(rec.texts) != 0 {
+		t.Errorf("answers = %v, want the card to be the whole answer", rec.texts)
+	}
+}
+
+// The one thing the card cannot show is a message waiting behind work
+// already running: it is honestly describing that work. So that, and only
+// that, is still said out loud.
+func TestCardReplyBehindARunningTurnSaysItIsQueued(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	d.reg.Observe(session.Observation{ID: "sess-1", PID: 4242, Dir: "/work/payments-api", HookEvent: hook.EventUserPromptSubmit})
+
+	value, _ := json.Marshal(notify.Action{Kind: notify.ActionSay, Session: "sess-1"})
+	d.onCardAction(context.Background(), feishu.CardAction{
+		Value: value, Input: "also check the tests", MessageID: "om_card",
+	})
+
+	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "Queued") {
+		t.Errorf("answers = %v, want it to say the message is queued", rec.texts)
 	}
 }
 

@@ -183,6 +183,8 @@ checking the affected callers.
 Activity just now
 
 [ Interrupt ]
+
+[ Message this session............. ]
 ```
 
 The card should communicate liveness without exposing implementation noise.
@@ -352,7 +354,7 @@ Validation
 ✓ 34 tests passed
 ✓ go test ./... passed
 
-[ Continue ]
+[ Message this session............. ]
 ```
 
 The completion view should summarize what matters rather than reproduce Claude's full answer.
@@ -363,6 +365,65 @@ that is over, and the user has to hear that it is. It is still one message
 for the turn - the live card is recalled, not left behind.
 
 Starting another turn in the same Claude Code session reactivates the same session experience.
+
+---
+
+## Answering from a card
+
+Every card about a session that can be continued carries a reply box. What
+is typed in it goes to that session, and that session becomes the one the
+user is talking to.
+
+The answer belongs on the card, not in the conversation:
+
+```text
+🔵 Sent
+
+payments-api
+Fix token refresh
+
+Your message is with Claude.
+
+You
+"lgtm, ship it"
+
+[ Message this session............. ]
+```
+
+Three things happen at once here, and each is the answer to a way this
+can otherwise go wrong.
+
+The card the user typed into is **rewritten**. Feishu keeps what was typed
+in a box until the card is redrawn, so a card left alone still shows a
+message the user has already sent.
+
+That same card **becomes the card of the turn the message starts**. One
+turn is one message, and the message the user is looking at is the one
+that should follow their own work. Any other card holding that session's
+live slot is recalled, because the moment a new turn begins from an older
+card, the newer one is describing a turn that is over.
+
+Until Claude takes the message up, the card says only that. The transcript
+is one turn behind the user - the work it describes is the work they just
+replied to - and showing that as `Working · 6m` would put the previous
+turn's progress and clock under a heading about the message just sent.
+
+Nothing is said in the conversation about any of it. A chat line repeating
+what the card now shows would be a second message for one action. The one
+exception is a message queued behind work already running: the card is
+honestly describing that work and cannot also say that something is
+waiting behind it, so that alone is still said out loud.
+
+### A short answer is still an answer
+
+A turn that runs no tool is ordinarily left unreported - that is what
+keeps a conversational exchange off the phone.
+
+It is the wrong rule for a turn that answers a message from Feishu. The
+user is not at the terminal watching the answer appear, and silence there
+is indistinguishable from a message that was never delivered. A turn that
+read a message from Feishu reports its outcome however little work it
+took.
 
 ---
 
@@ -381,7 +442,7 @@ Tests still fail in auth/session_test.go.
 Validation
 ✕ 2 tests failed
 
-[ Continue ]
+[ Message this session............. ]
 ```
 
 A failed turn is different from a temporary tool failure.
@@ -415,7 +476,24 @@ This preserves Claude Companion's product boundary:
 
 > Claude Companion can interact with your Claude session, but it does not own its lifecycle.
 
-No confirmation is necessary for interrupting a normal working turn, provided the action is restricted to an authorized user.
+Interrupting is restricted to an authorized user, and it is mild: it stops
+a turn and nothing else.
+
+The button is still guarded by a confirmation, because what the guard is
+for is not authority but the accident. `[ Interrupt ]` sits on the card
+the user reads to check on their work, one tap away from every scroll on a
+phone held one-handed, and stopping the work should not be a thing that
+happens on the way to reading about it.
+
+The dialog says both halves - what stops, and what does not:
+
+```text
+Stop this turn?
+
+Claude stops what it is doing and the session goes back
+to its prompt. Nothing is closed, and nothing done so
+far is lost.
+```
 
 ---
 

@@ -1,281 +1,117 @@
-# Claude Code Feishu Companion
+<h1 align="center">Claude Code Feishu Companion</h1>
 
-[![CI](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/marcelritzschke/claude-code-feishu-companion/total)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases)
-[![Go](https://img.shields.io/github/go-mod/go-version/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/blob/main/go.mod)
-[![License](https://img.shields.io/github/license/marcelritzschke/claude-code-feishu-companion)](LICENSE)
+<p align="center">
+  从飞书/Lark 继续正在运行的原生 Claude Code 会话。
+  <br>
+  原生 Claude Code 飞书 Channel——不启动新 Agent，也不替换 Claude Code runtime。
+</p>
 
-**原生 Claude Code 飞书 Channel——从飞书/Lark 继续正在运行的 Claude Code 会话，
-不创建、不替换、也不包装 Claude Code。**
+<p align="center">
+  <a href="https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/marcelritzschke/claude-code-feishu-companion/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/marcelritzschke/claude-code-feishu-companion"></a>
+  <a href="https://github.com/marcelritzschke/claude-code-feishu-companion/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/marcelritzschke/claude-code-feishu-companion/total"></a>
+  <a href="https://github.com/marcelritzschke/claude-code-feishu-companion/blob/main/go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/marcelritzschke/claude-code-feishu-companion"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/marcelritzschke/claude-code-feishu-companion"></a>
+</p>
 
-**简体中文** | [English](README.md)
-
-```text
-飞书/Lark ↔ Companion ↔ Claude Code 原生 Channel ↔ 现有终端会话
-```
-
-Claude Code 始终掌控：
-
-- 会话生命周期
-- 上下文
-- 工具
-- 身份验证
-- 权限
-- 原生 TUI
-
-Companion 不会启动 `claude -p`，不会使用独立的 Agent SDK harness，也不会创建
-并行的 Claude 会话。
+<p align="center">
+  🚀 <a href="#快速开始">快速开始</a> ·
+  📖 <a href="docs/setup.md">文档</a> ·
+  🔐 <a href="docs/security-and-operations.md">安全</a> ·
+  📦 <a href="https://github.com/marcelritzschke/claude-code-feishu-companion/releases">发布</a> ·
+  🌐 <a href="README.md">English</a>
+</p>
 
 ## 原生 Claude Code Channel——不是 CLI bridge
 
-Claude Code Feishu Companion 把飞书/Lark 连接到你已经在终端中启动的 Claude Code
-进程。飞书消息通过原生 Claude Code Channel 进入这个现有进程；上下文、工具、权限、
-身份验证、会话生命周期和 TUI 仍由 Claude Code 掌控。它不会创建由 bridge 托管的会话，
-也不会用另一套 harness 替换原生 Claude Code 会话。
+Claude Code Feishu Companion 通过原生 Channel，把飞书/Lark 连接到你已经启动的
+Claude Code 进程。原来的终端始终保持活跃并可正常使用；飞书只是一个远程入口。
 
-> **把飞书/Lark 接入你已经在运行的 Claude Code 会话——不是另一套 Claude harness。**
+<table width="100%">
+  <tr>
+    <td>💡 <strong>把飞书/Lark 接入你已经在运行的 Claude Code 会话——不是另一套 Claude harness。</strong></td>
+  </tr>
+</table>
 
-```text
-             飞书 / Lark
-                  │
-            Companion 守护进程
-                  │
-          Claude Code Channel
-                  │
-        正在运行的 Claude Code
-          终端会话（EXISTING）
-```
+Claude Code 始终是实际运行环境，掌管会话生命周期、上下文、工具、身份验证、权限和
+原生 TUI。Claude Code Feishu Companion 只把这个运行中的进程连接到飞书/Lark；它不会
+启动 `claude -p`，不会引入独立的 Agent SDK harness，也不会创建另一个 Claude 会话。
 
-```text
-典型 bridge：
-飞书 → 守护进程 → 启动 Claude → 新建/恢复另一个进程
-
-Claude Code Feishu Companion：
-飞书 → 原生 Channel → 你已经在运行的 Claude Code 进程
+```mermaid
+flowchart LR
+    feishu["飞书 / Lark"] <--> daemon["Companion 守护进程"]
+    daemon <--> channel["Claude Code Channel"]
+    channel <--> session["你正在运行的会话"]
 ```
 
 ## 快速开始
 
-在 macOS 或 Linux 上复制并运行这一行命令。它会安装程序，并立即开始飞书引导：
+在 macOS 或 Linux 上，一行命令即可安装程序并打开飞书二维码引导：
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
-安装程序会从 [GitHub Releases](https://github.com/marcelritzschke/claude-code-feishu-companion/releases)
-下载适合当前平台的单一二进制文件，校验其校验和，并安装到 `~/.local/bin`。
-无需维护运行时环境、容器或服务管理器。
+扫描二维码即可连接应用，扫码账号会成为所有者。已有应用凭据、Windows 发布包、
+手动设置和配置选项请参阅[设置与配置（英文）](docs/setup.md)。
 
-这条命令最后会启动基于二维码的飞书引导流程：
-
-```text
-claude-companion init
-    ↓
-扫描飞书二维码
-    ↓
-批准授权
-    ↓
-完成
-```
-
-扫码所用的账号会成为该 Claude Code Feishu Companion 安装的所有者。在管理员统一管理的
-环境中，也可以改用已有的 App ID 和 App Secret。
-
-Windows 发布包、手动配置飞书应用、所需权限范围、配置选项和其他安装路径，请
-参阅[设置与配置（英文）](docs/setup.md)。
-
-## 为什么选择 Claude Code Feishu Companion？
-
-### Claude Code 仍是主工作区
-
-你仍然按照平时的方式工作：
+需要从飞书远程继续的会话，请这样启动：
 
 ```sh
-cd my-project
-claude
+claude --dangerously-load-development-channels server:claude-companion
 ```
 
-无需创建 Claude Code Feishu Companion 工作区，无需迁移到另一套 Agent 运行时或 Web UI，
-也不需要终端镜像或由桥接程序托管的会话。原来的终端始终可以正常使用。
+在 Claude Code Channels 仍处于预览阶段时，普通 `claude` 会话可以发送通知，
+但不能接收远程消息。
 
-### 只提醒需要关注的事，不制造噪音
+## 功能概览
 
-> **需要你时通知，完成后总结，始终继续原来的会话。**
+| 功能 | 使用体验 | 状态 |
+| --- | --- | --- |
+| 现有 Claude Code 会话 | 继续使用终端里已经打开的会话。 | ✅ |
+| 会话发现 | 从飞书/Lark 精确选择正在运行的会话。 | ✅ |
+| 通知 | 只有 Claude 需要你或完成任务时才提醒。 | ✅ |
+| 远程继续 | 把后续指令发送到选中的现有会话。 | ✅ 预览 |
+| 实时查看 | 用一张原地更新的卡片跟随进度。 | ✅ |
+| 远程中断 | 只停止当前轮次，不结束会话。 | ✅ macOS/Linux |
+| 权限决策 | 从飞书/Lark 批准或拒绝权限请求。 | ✅ 可选 |
+| 二维码引导 | 扫码一次，连接飞书应用和本机。 | ✅ |
+| macOS / Linux | 使用完整的 Companion 工作流程。 | ✅ |
+| Windows | 使用存在平台限制的工作流程。 | 🧪 部分支持 |
+| Bedrock / Vertex / Foundry | 可以接收通知，但不能远程继续。 | ❌ Channel 限制 |
 
-Claude Code Feishu Companion 不会把每次文件读取、搜索、Shell 命令或工具调用都发送到
-飞书。它会提示权限请求和 Claude 提出的问题，总结已完成的工作；长任务则可选择在
-同一张卡片上更新进度。
+## 使用体验
 
-当你离开电脑时，Claude Code Feishu Companion 只需要回答两个问题：
+- **默认安静。** 飞书只提示问题、权限请求和完成总结，不推送每次文件读取、命令或工具调用。
+- **精确控制会话。** 发送 `sessions` 并选择正在运行的会话；后续消息只会进入该会话，
+  已结束的会话不会被悄悄替换。
+- **一张实时卡片。** 发送 `watch` 即可原地跟随进度。点击 **Interrupt** 或发送
+  `interrupt` 只会停止当前轮次，不会结束会话。
 
-- Claude 需要我吗？
-- 我不在时发生了什么？
+## 工作原理与安全
 
-### 远程继续同一会话，而不是创建第二个对话
+本地轻量守护进程负责连接飞书并发现 Claude Code 会话。Hooks 提供生命周期和关注事件；
+Claude Code Channels 把消息送入选定的运行中会话。
 
-向飞书机器人发送 `sessions`，然后从本机正在运行的 Claude Code 会话中选择
-一个：
+会话、上下文、身份验证和工具始终保留在本地并归用户所有。只有已配置的飞书所有者
+可以发送消息，远程权限决策则需单独启用。Companion 只发送必要的卡片，不发送终端流、
+完整会话记录或模型推理。
 
-```text
-payments-api
-Working · Remote ready
-
-frontend
-Waiting for permission · Remote ready
-
-claude-companion
-Idle · Notifications only
-```
-
-点击会话或回复编号。后续消息只会进入这个指定会话，不会发送到其他会话。如果
-会话已经结束，Claude Code Feishu Companion 会清除选择，不会悄悄把消息转发到别处。
-
-### 需要时才看的实时视图
-
-会话默认保持安静，只有你主动查看时才会展开。在会话卡片上点击 **Watch**，或
-回复 `watch`，就会有一张卡片跟随这个会话：
-
-```text
-🟢 Working · 6m 12s
-Fix token refresh · payments-api
-
-Current progress
-Found duplicate refresh validation. Consolidating
-the logic and checking the callers.
-
-Activity
-✓ Read 2 files
-✓ Updated refresh.go
-
-▸ ◌ Running go test ./...
-
-Activity just now
-[ Interrupt ]
-```
-
-这张卡片原地更新——不会每个动作发一条消息，也不会展示原始日志或模型推理——
-并在这一轮结束时收敛为常规的完成卡片。它记录了这一轮的每一个步骤，但几乎全部
-折叠收起：连续的普通步骤合并成一行，只有正在执行的和出错的才会展开细看。实时
-视图不需要额外配置，也不需要改变启动 Claude Code 的方式。
-
-## 使用流程
-
-```text
-照常启动 Claude
-        ↓
-Claude Code Feishu Companion 自动发现会话
-        ↓
-离开电脑
-        ↓
-Claude 需要你时，飞书发出通知
-        ↓
-选中对应的运行中会话
-        ↓
-远程继续该会话，或实时查看进展
-        ↓
-回到终端
-        ↓
-继续同一个原生 Claude Code 会话
-```
-
-Claude Code Feishu Companion 只在需要关注和任务完成时通知，并提供本地会话概览、
-向指定会话发送后续指令、对选定会话的可选实时视图，以及可选的远程权限批准与拒绝。
-卡片按钮只是快捷方式，并非必需；输入会话编号、`watch` 和明确的权限回复同样有效。
-
-## 与 Agent 网关有何不同
-
-许多 Agent 网关会把桥接程序或平台作为工作的起点：
-
-```text
-飞书
-  ↓
-桥接程序 / Agent 平台
-  ↓
-由桥接程序启动或恢复 Claude
-```
-
-Claude Code Feishu Companion 采用不同的产品边界：
-
-```text
-Claude Code TUI ← Claude Code Feishu Companion → 飞书
-```
-
-如果聊天工具是主要工作区，网关是很自然的入口。Claude Code Feishu Companion 面向
-另一种需求：让 Claude Code 始终作为主工作区，只在离开电脑时，通过一座隐形桥梁
-临时连接进去。
-
-Claude Code Feishu Companion 不拥有、不启动、也不恢复你的 Claude Code 会话。它不是
-通用 Agent 平台，不是以飞书为中心的编程环境，也不是 Claude Code 的替代界面。
-
-## 工作原理
-
-Claude Code Feishu Companion 在本地运行一个轻量守护进程，负责维持飞书连接并识别本机上的
-Claude Code 会话。Claude Code Hooks 提供会话生命周期、需要关注和完成等事件；Claude
-Channels 则通过受支持的连接方式，把飞书消息送入已经运行的会话。
-
-```text
-                          飞书
-                           ↕
-          本地 Claude Code Feishu Companion 守护进程
-                       ↗    ↖
-               Claude 会话  Claude 会话
-                Hook + Channel  Hook + Channel
-```
-
-最重要的结果很简单：
-
-> **Claude 会话始终保留在本地并归你所有。Claude Code Feishu Companion 只连接会话，
-> 不拥有会话。**
-
-Claude Code Feishu Companion 不是终端模拟器，也不是云端托管的 Claude 运行时。进程细节、
-本地存储、Hook 行为和运维操作，请参阅[安全与运维（英文）](docs/security-and-operations.md)。
-
-## 安全与透明
-
-通常由本地 Claude Code Feishu Companion 守护进程负责与飞书通信；必要时，Hook 可直接
-发送通知作为后备。Claude Code Feishu Companion 只发送所配置功能需要的卡片和消息，
-例如会话标识、Claude 回复摘录、验证结果和权限详情；不会发送终端数据流或完整的会话记录。实时视图是
-按会话手动开启的：开启期间，守护进程在本地重新读取该会话的记录并改写同一张
-卡片，不会发送模型推理。
-
-Claude Code Feishu Companion 只接受来自已配置所有者的消息。远程消息只会发送到明确选定的会话。
-远程权限批准是一项独立设置，因为它会向该飞书身份授予真实的操作权限。
-
-Claude Code Feishu Companion 不会启动或停止 Claude Code，不会接管终端，不会自行编辑
-文件，也不会控制 Claude 的身份验证。完整的信任边界和本地数据处理方式记录在
-[安全与运维（英文）](docs/security-and-operations.md)中。
+完整信任边界请参阅[安全与运维（英文）](docs/security-and-operations.md)，设计思路请参阅
+[产品体验规范（英文）](docs/product-experience-spec.md)。
 
 ## 当前限制
 
-- **远程继续功能目前需要预览标志。** Claude Code Channels 仍处于研究预览阶段，
-  Claude Code Feishu Companion 尚未进入 Anthropic 的 Channel 允许列表。需要从飞书继续的会话目前
-  必须这样启动：
-
-  ```sh
-  claude --dangerously-load-development-channels server:claude-companion
-  ```
-
-  使用普通 `claude` 启动的会话仍会被发现并发送通知，但在飞书中显示为
-  **Notifications only**。
-
+- 远程继续需要使用上文的预览标志，因为 Claude Code Channels 仍处于研究预览阶段，
+  Companion 尚未进入允许列表。
 - Channels 需要通过 claude.ai 或 Console API Key 进行 Anthropic 身份验证，
   目前不支持 Bedrock、Vertex 和 Foundry。Team 与 Enterprise 组织需要集中启用
   Channels。
-- Claude Code 的多项选择 `AskUserQuestion` 提示目前无法通过 Channel 回答。
-  Claude Code Feishu Companion 会通知你，但仍需回到原终端作答。
+- Claude Code 的多项选择 `AskUserQuestion` 提示无法通过 Channel 回答，需回到原终端。
 - 如需远程继续，电脑、Claude Code 会话、Claude Code Feishu Companion 守护进程和网络连接都必须
   保持运行。
-- WSL 与原生 Windows 属于两套独立安装。在 Windows 上，第一次消息确认会话的
+- WSL 与原生 Windows 属于两套独立安装。Windows 不支持远程中断；第一次消息确认
   Channel 之前，远程状态会显示为 **Remote untested**。
-
-## 项目状态
-
-按需通知、完成总结、本地会话发现、指定会话的远程继续、可选的权限批准与拒绝、
-对选定会话的可选实时视图、二进制发布包安装和二维码引导均已实现。
-
-Claude Code Feishu Companion 有意不做终端流式传输，也不做另一套 Claude Code 界面。完整设计思路
-请参阅[产品体验规范（英文）](docs/product-experience-spec.md)。
 
 ## 参与贡献
 

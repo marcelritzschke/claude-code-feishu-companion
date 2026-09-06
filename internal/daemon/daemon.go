@@ -129,9 +129,29 @@ type inboundProof struct {
 }
 
 // delivery is a message pushed into a session, waiting for proof it landed.
+//
+// The proof is the message appearing in the session's own transcript.
+// Nothing else will do: Claude Code never acknowledges a channel event,
+// and a session doing its own work produces hook events all day - taking
+// those for proof is how a message that was dropped on the way in comes
+// to be reported as sent.
 type delivery struct {
 	sessionID string
 	sentAt    time.Time
+	// transcript is where the proof would appear, and offset how far that
+	// file had been written when the message went out. Empty when the
+	// session has not told Claude Companion where its transcript is, which
+	// leaves hook activity as the only signal there is.
+	transcript string
+	offset     int64
+	// size and grewAt are the transcript as of the last look. A transcript
+	// that is still growing is a turn still running, and a message queued
+	// behind it has not failed to arrive - it has not been reached yet.
+	size   int64
+	grewAt time.Time
+	// queued is true when the message has a turn in front of it, and is
+	// therefore owed more patience than one sent to a resting session.
+	queued bool
 }
 
 // Run starts the daemon and blocks until it is stopped or ctx ends. Only
@@ -341,16 +361,23 @@ func (d *Daemon) reply(conn *ipc.Conn, ack ipc.Ack) {
 // housekeep writes the registry out and gives up on messages that never
 // proved they arrived.
 func (d *Daemon) housekeep(ctx context.Context) {
-	ticker := time.NewTicker(snapshotEvery)
-	defer ticker.Stop()
+	snapshots := time.NewTicker(snapshotEvery)
+	defer snapshots.Stop()
+	// Pending messages are looked at far more often than the registry is
+	// written: "did that arrive?" is a question the user is holding their
+	// phone waiting for, and the check costs nothing when nothing is
+	// pending.
+	deliveries := time.NewTicker(deliveryPoll)
+	defer deliveries.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-snapshots.C:
 			if err := d.reg.Save(); err != nil {
 				debuglog.Printf("save sessions: %v", err)
 			}
+		case <-deliveries.C:
 			d.expireDeliveries(ctx)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/state"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
@@ -60,7 +61,7 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		d.settleStandingPrompt(ctx, s.ID)
 		d.confirmDelivery(s.ID)
 	}
-	var settling bool
+	var stranded bool
 	switch p.HookEventName {
 	case hook.EventSessionEnd:
 		// The session is over: it must leave the overview, it must not
@@ -70,10 +71,11 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		d.reg.Remove(s.ID)
 		return
 	case hook.EventStop, hook.EventStopFailure:
-		// The turn is over, so the live view is too - but its card is left
-		// standing, because the completion notification below settles that
-		// very message into the turn's outcome.
-		settling = d.endWatch(s.ID) != nil
+		// The turn is over, so the live view is too - and its card is
+		// taken out of the conversation, so that the outcome delivered
+		// below arrives as a new message rather than as a silent rewrite
+		// of one the user has already scrolled past.
+		stranded = d.recallLiveCard(ctx, s.ID)
 	case hook.EventPostToolUse, hook.EventPermissionRequest, hook.EventPreToolUse:
 		// The first sign of real work in a turn opens the session's live
 		// card; afterwards each event nudges it, so a state that needs the
@@ -92,16 +94,59 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		},
 	}).Event(turn, d.cfg)
 
-	if settling {
+	if stranded {
 		d.pingOutcome(ctx, s, p, turn)
 	}
 }
 
-// pingOutcome is the push a settled session card cannot deliver. Rewriting
-// a card never notifies anyone, so a turn whose outcome was written onto
-// its own live card would otherwise end in silence - and the one thing this
-// product cannot afford is the user not hearing that Claude is done, or
-// stuck. Failures always push; a completion that did no reportable work
+// recallLiveCard takes a finished turn's live card out of the conversation,
+// so that the outcome about to be delivered arrives as a new message.
+//
+// Rewriting a card notifies nobody, and the one thing this product cannot
+// afford is the user not hearing that Claude is done, or stuck. Recalling
+// the live card is what buys that push without spending a second message
+// on it: one turn stays one message, and that message arrives.
+//
+// It reports whether a live card is left standing, which happens only when
+// Feishu refuses the recall. The outcome then settles that card in place,
+// exactly as it used to, and the push has to be found elsewhere.
+func (d *Daemon) recallLiveCard(ctx context.Context, sessionID string) (stranded bool) {
+	w := d.endWatch(sessionID)
+
+	// The turn's live card is whichever message holds the live slot: the
+	// watch's own card, or the progress card the watch took over.
+	claimed := false
+	store, err := state.Open()
+	if err != nil {
+		debuglog.Printf("open state: %v", err)
+	} else if err := store.Mutate(func(entries map[string]state.Entry) {
+		live, ok := entries[sessionID]
+		if !ok || live.MessageID == "" {
+			return
+		}
+		claimed = true
+		if d.deleteCard(ctx, live.MessageID) {
+			delete(entries, sessionID)
+			debuglog.Printf("recalled the live card for session %s", sessionID)
+			return
+		}
+		stranded = true
+	}); err != nil {
+		debuglog.Printf("state: %v", err)
+	}
+	if !claimed && w != nil && w.messageID != "" {
+		// This watch never got the live slot, so the outcome will not
+		// settle its card. It has to leave on its own, and a card the
+		// outcome will not settle is not one it can be stranded on.
+		d.deleteCard(ctx, w.messageID)
+	}
+	return stranded
+}
+
+// pingOutcome is the push a settled card cannot deliver. It is the last
+// resort: it only runs for a turn whose live card Feishu refused to recall,
+// where the outcome had to be written onto a message the user was already
+// shown. Failures always push; a completion that did no reportable work
 // stays quiet, exactly as its notification would have.
 func (d *Daemon) pingOutcome(ctx context.Context, s session.Session, p *hook.Payload, turn *transcript.Turn) {
 	failed := p.HookEventName == hook.EventStopFailure || turn.Failed

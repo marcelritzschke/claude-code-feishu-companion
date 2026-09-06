@@ -172,7 +172,7 @@ The Session Card is the center of the experience.
 A working session might look like:
 
 ```text
-🟢 Working · 4m
+🔵 Working · 4m
 
 payments-api
 Fix token refresh
@@ -280,7 +280,7 @@ While Claude is working, the Session Card changes quietly.
 Example:
 
 ```text
-🟢 Working · 2m
+🔵 Working · 2m
 
 payments-api
 Fix token refresh
@@ -293,7 +293,7 @@ Activity 6s ago
 Later the same card may become:
 
 ```text
-🟢 Working · 3m
+🔵 Working · 3m
 
 payments-api
 Fix token refresh
@@ -336,7 +336,8 @@ After the user responds, the Session Card returns to Working.
 
 ## Completed
 
-When the current turn finishes, the Session Card settles into the result:
+When the current turn finishes, the live Session Card leaves the
+conversation and the result takes its place as a new message:
 
 ```text
 ✅ Completed · 8m
@@ -355,6 +356,11 @@ Validation
 ```
 
 The completion view should summarize what matters rather than reproduce Claude's full answer.
+
+The result arrives as a new message rather than as a rewrite of the live
+card, because a rewritten card notifies nobody: green belongs to a turn
+that is over, and the user has to hear that it is. It is still one message
+for the turn - the live card is recalled, not left behind.
 
 Starting another turn in the same Claude Code session reactivates the same session experience.
 
@@ -528,7 +534,7 @@ The Feishu experience should feel less like watching an agent operate and more l
 Most of the time:
 
 ```text
-🟢 Working
+🔵 Working
 ```
 
 Occasionally:

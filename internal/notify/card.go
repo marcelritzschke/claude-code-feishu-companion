@@ -18,21 +18,9 @@ import (
 // Feishu, so a card built by a hook falling back on its own simply offers
 // no button.
 type Options struct {
-	// ContinueSession, when set, renders a [ Continue ] button that points
-	// the user's next messages at that session.
+	// ContinueSession, when set, is the session this card may be answered
+	// to: it puts a reply box on the card, wired to that session.
 	ContinueSession string
-}
-
-// buttons returns the actions these options add to a notification card.
-func (o Options) buttons() []Button {
-	if o.ContinueSession == "" {
-		return nil
-	}
-	return []Button{{
-		Label:  "Continue",
-		Style:  stylePrimary,
-		Action: Action{Kind: ActionSelect, Session: o.ContinueSession},
-	}}
 }
 
 // Card JSON 2.0 - only the subset Claude Companion needs, marshalled by
@@ -122,6 +110,15 @@ type buttonElement struct {
 	Behaviors []behavior `json:"behaviors"`
 }
 
+type inputElement struct {
+	Tag         string     `json:"tag"`
+	Name        string     `json:"name"`
+	Placeholder *cardText  `json:"placeholder,omitempty"`
+	MaxLength   int        `json:"max_length,omitempty"`
+	Width       string     `json:"width,omitempty"`
+	Behaviors   []behavior `json:"behaviors"`
+}
+
 type columnElement struct {
 	Tag      string `json:"tag"`
 	Elements []any  `json:"elements"`
@@ -175,6 +172,44 @@ func buttonRow(buttons []Button) any {
 	}
 	return set
 }
+
+// replyCap bounds what one card reply may carry. It is a message to a
+// coding agent typed on a phone, not a document: the cap is Feishu's own
+// input limit rather than a rule of this product's, and it is stated so
+// the box does not silently swallow a long message's tail.
+const replyCap = 1000
+
+// Reply is a text box on a card, wired to send what is typed in it to the
+// session the card is about.
+//
+// It is a Section rather than card chrome because that is what it is:
+// another block in the body, below the state and above the buttons. Being
+// one also means a card that runs out of element budget loses activity
+// detail before it loses the way to answer.
+type Reply struct {
+	// Placeholder is the grey prompt in the empty box.
+	Placeholder string
+	// Action is what the typed text is delivered as.
+	Action Action
+}
+
+func (r Reply) elements() []any {
+	return []any{&inputElement{
+		Tag:         "input",
+		Name:        "reply",
+		Placeholder: plainText(r.Placeholder),
+		MaxLength:   replyCap,
+		Width:       "fill",
+		Behaviors:   []behavior{{Type: "callback", Value: r.Action}},
+	}}
+}
+
+// cost is three: the input, the placeholder inside it, and one more the
+// API counts that the JSON does not show - the callback behaviour, most
+// likely. Measured against the live API rather than deduced: at two, the
+// card for a long turn is refused with 11310 and stops updating partway
+// through, which is the failure no user would ever report as a card bug.
+func (Reply) cost() int { return 3 }
 
 // A Section is one block on a card: either prose, or detail folded behind
 // a tap. Only these two shapes exist, because a card that can hide things

@@ -16,8 +16,9 @@ func PermissionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 		"Claude is waiting for permission to continue.",
 		"**Requested action**\n" + describeAction(p.ToolName, p.ToolInput, p.Cwd),
 	}
-	return card("orange", "⚠️ Permission required", contextLine(p, turn), bodies,
-		opts.buttons(), "Open Claude Code to respond.")
+	return cardOf("orange", "⚠️ Permission required", contextLine(p, turn),
+		append(proseOf(bodies), replyTo(opts.ContinueSession)), nil,
+		"Open Claude Code to respond.")
 }
 
 // QuestionCard fires when Claude asks a multiple-choice question; the
@@ -70,8 +71,9 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 	if rest != "" {
 		bodies = append(bodies, "**Claude**\n\""+truncateRunes(rest, quoteCap)+"\"")
 	}
+	sections := append(withHistory(proseOf(bodies), turn), replyTo(opts.ContinueSession))
 	return cardOf("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn),
-		withHistory(proseOf(bodies), turn), opts.buttons(), "")
+		sections, nil, "")
 }
 
 // FailureCard reports a turn that needs the user instead of one that
@@ -89,8 +91,9 @@ func FailureCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, 
 	if detail := lastRelevantError(p, turn); detail != "" {
 		bodies = append(bodies, "**Last relevant error**\n"+detail)
 	}
+	sections := append(withHistory(proseOf(bodies), turn), replyTo(opts.ContinueSession))
 	return cardOf("red", "🔴 Failed"+elapsedSuffix(turn), contextLine(p, turn),
-		withHistory(proseOf(bodies), turn), opts.buttons(), "Open Claude Code to continue.")
+		sections, nil, "Open Claude Code to continue.")
 }
 
 // failureText says why the turn needs the user, in one sentence.
@@ -129,7 +132,8 @@ func ProgressCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string,
 	if facts := soFar(turn); facts != "" {
 		bodies = append(bodies, "**So far**\n"+facts)
 	}
-	return card("yellow", "🟡 Claude is still working", contextWithDuration(p, turn), bodies, opts.buttons(), "")
+	return cardOf("yellow", "🟡 Claude is still working", contextWithDuration(p, turn),
+		append(proseOf(bodies), replyTo(opts.ContinueSession)), nil, "")
 }
 
 // apiFailureText turns a StopFailure error type into a sentence a phone

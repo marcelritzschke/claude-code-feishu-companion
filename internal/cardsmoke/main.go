@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
@@ -73,6 +74,21 @@ func sess(state session.State) session.Session {
 		ID: "s1", Dir: "/home/u/payments-api", Title: "Fix token refresh",
 		State: state, Remote: session.Ready, PID: os.Getpid(),
 	}
+}
+
+// args reads the two things this tool takes: whether to leave the cards
+// standing, and a name fragment to post only the cards that match - a
+// schema change usually breaks one card, and looking at it should not cost
+// a screenful of the others.
+func args() (keep bool, only string) {
+	for _, a := range os.Args[1:] {
+		if a == "-keep" || a == "--keep" {
+			keep = true
+			continue
+		}
+		only = a
+	}
+	return keep, only
 }
 
 func main() {
@@ -164,9 +180,13 @@ func main() {
 		}})
 	}
 
+	keep, only := args()
 	var ids []string
 	bad := 0
 	for _, cd := range cards {
+		if only != "" && !strings.Contains(cd.name, only) {
+			continue
+		}
 		body, err := cd.fn()
 		if err != nil {
 			fmt.Printf("%-30s BUILD FAILED %v\n", cd.name, err)
@@ -182,9 +202,8 @@ func main() {
 		fmt.Printf("%-30s ok (%d bytes) %s\n", cd.name, len(body), id)
 		ids = append(ids, id)
 	}
-	fmt.Printf("\n%d/%d accepted. In a session these are three cards, not %d messages.\n",
-		len(cards)-bad, len(cards), len(cards))
-	if len(os.Args) > 1 && os.Args[1] == "-keep" {
+	fmt.Printf("\n%d sent, %d failed.\n", len(ids), bad)
+	if keep {
 		fmt.Println("cards left standing for visual review")
 		return
 	}

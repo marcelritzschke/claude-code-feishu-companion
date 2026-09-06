@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
@@ -459,8 +460,98 @@ func TestAnUndeliverableMessageIsReportedAndDowngraded(t *testing.T) {
 	}
 }
 
-// Cards for a continuable session carry the button that makes the whole
-// loop work: read the outcome, then keep going without leaving Feishu.
+// The message going out is not the message arriving. A session that never
+// registered the channel takes the write and drops it in silence, and the
+// user has to be told rather than left believing Claude read it.
+func TestAMessageThatNeverReachesTheSessionIsReported(t *testing.T) {
+	d, rec, _ := fixture(t, session.Unconfirmed)
+	path := watchable(t, d)
+	selectSession(t, d, "sess-1")
+	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
+
+	d.onMessage(context.Background(), feishu.Message{Text: "ship it"})
+
+	// The session goes on with its own work, which used to be taken for
+	// proof that it had heard.
+	hookEvent(t, d, hook.EventPostToolUse, map[string]any{"transcript_path": path, "tool_name": "Read"})
+	appendLines(t, path, turnPrompt)
+	d.expireDeliveries(context.Background())
+	if len(rec.texts) != 1 {
+		t.Fatalf("answers = %v, want only the confirmation while the turn is still being written", rec.texts)
+	}
+
+	// Quiet now, and the message is still not in the transcript.
+	d.mu.Lock()
+	d.awaiting["sess-1"].grewAt = time.Now().Add(-2 * queuedProof)
+	d.mu.Unlock()
+	d.expireDeliveries(context.Background())
+
+	if len(rec.texts) != 2 || !strings.Contains(rec.texts[1], "not delivered") {
+		t.Fatalf("answers = %v, want it to say the message did not arrive", rec.texts)
+	}
+	if !strings.Contains(rec.texts[1], "server:"+mcp.ServerName) {
+		t.Errorf("answer = %q, want it to name the flag that fixes this", rec.texts[1])
+	}
+	if s, _ := d.reg.Get("sess-1"); s.Remote.Continuable() {
+		t.Error("a session that swallowed a message is still being offered")
+	}
+}
+
+// A session that was resting reads a message at once or not at all, so
+// waiting a minute and a half to say so would be a minute and a half of
+// the user believing Claude is on it.
+func TestARestingSessionIsGivenUpOnQuickly(t *testing.T) {
+	d, rec, _ := fixture(t, session.Unconfirmed)
+	path := watchable(t, d)
+	selectSession(t, d, "sess-1")
+	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
+
+	d.onMessage(context.Background(), feishu.Message{Text: "ship it"})
+
+	d.mu.Lock()
+	d.awaiting["sess-1"].grewAt = time.Now().Add(-idleProof / 2)
+	d.mu.Unlock()
+	d.expireDeliveries(context.Background())
+	if len(rec.texts) != 1 {
+		t.Fatalf("answers = %v, want nothing said this soon", rec.texts)
+	}
+
+	d.mu.Lock()
+	d.awaiting["sess-1"].grewAt = time.Now().Add(-idleProof - time.Second)
+	d.mu.Unlock()
+	d.expireDeliveries(context.Background())
+	if len(rec.texts) != 2 || !strings.Contains(rec.texts[1], "not delivered") {
+		t.Errorf("answers = %v, want the message reported as undelivered", rec.texts)
+	}
+}
+
+// A message Claude actually read is in the transcript, and nothing more is
+// said about it.
+func TestAMessageInTheTranscriptIsNotReportedLost(t *testing.T) {
+	d, rec, _ := fixture(t, session.Unconfirmed)
+	path := watchable(t, d)
+	selectSession(t, d, "sess-1")
+	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
+
+	d.onMessage(context.Background(), feishu.Message{Text: "ship it"})
+	appendLines(t, path, `{"type":"user","message":{"role":"user","content":"<channel source=\"`+
+		mcp.ServerName+`\" project=\"payments-api\">\nship it\n</channel>"}}`+"\n")
+
+	d.mu.Lock()
+	d.awaiting["sess-1"].grewAt = time.Now().Add(-2 * queuedProof)
+	d.mu.Unlock()
+	d.expireDeliveries(context.Background())
+
+	if len(rec.texts) != 1 || strings.Contains(rec.texts[0], "not delivered") {
+		t.Errorf("answers = %v, want only the confirmation that it was sent", rec.texts)
+	}
+	if s, _ := d.reg.Get("sess-1"); !s.Remote.Continuable() {
+		t.Error("a session that read the message is no longer offered")
+	}
+}
+
+// Cards for a continuable session carry the box that makes the whole loop
+// work: read the outcome, then keep going without leaving Feishu.
 func TestCompletionOffersToContinue(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
 
@@ -471,7 +562,7 @@ func TestCompletionOffersToContinue(t *testing.T) {
 	if len(rec.cards) != 1 {
 		t.Fatalf("cards = %v, want one completion", rec.titles(t))
 	}
-	if !strings.Contains(rec.cards[0], notify.ActionSelect) {
+	if !strings.Contains(rec.cards[0], notify.ActionSay) {
 		t.Error("the completion card offers no way to continue the session")
 	}
 }
@@ -488,8 +579,46 @@ func TestCompletionOffersNoContinueForUnreachableSessions(t *testing.T) {
 	if len(rec.cards) != 1 {
 		t.Fatalf("cards = %v, want one completion", rec.titles(t))
 	}
-	if strings.Contains(rec.cards[0], notify.ActionSelect) {
+	if strings.Contains(rec.cards[0], notify.ActionSay) {
 		t.Error("an unreachable session was offered as continuable")
+	}
+}
+
+// The reply box on a card is the shortest way to continue a session: what
+// the user types reaches that session, and that session becomes the one
+// they are talking to.
+func TestCardReplyReachesTheSessionItNames(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+
+	value, _ := json.Marshal(notify.Action{Kind: notify.ActionSay, Session: "sess-1"})
+	d.onCardAction(context.Background(), feishu.CardAction{
+		Value: value,
+		Input: "check the mobile client first",
+	})
+
+	if got := l.sent(); len(got) != 1 || got[0] != "check the mobile client first" {
+		t.Fatalf("session received %v, want what was typed on the card", got)
+	}
+	if s, ok := d.reg.Selected(); !ok || s.ID != "sess-1" {
+		t.Errorf("selected = %+v, want the session the card named", s)
+	}
+	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "Sent to") {
+		t.Errorf("answers = %v, want one confirmation of where it went", rec.texts)
+	}
+}
+
+// An empty box submitted by accident is not a message.
+func TestEmptyCardReplySendsNothing(t *testing.T) {
+	d, rec, l := fixture(t, session.Ready)
+
+	value, _ := json.Marshal(notify.Action{Kind: notify.ActionSay, Session: "sess-1"})
+	d.onCardAction(context.Background(), feishu.CardAction{Value: value, Input: ""})
+
+	if got := l.sent(); len(got) != 0 {
+		t.Errorf("session received %v, want nothing", got)
+	}
+	if len(rec.texts) != 0 {
+		t.Errorf("answers = %v, want none", rec.texts)
 	}
 }
 

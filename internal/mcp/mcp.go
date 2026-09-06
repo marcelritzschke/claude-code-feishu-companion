@@ -27,6 +27,17 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 )
 
+// ServerName is the name this channel is registered under with Claude
+// Code, and the name a session opts it in by, as
+// "--dangerously-load-development-channels server:claude-companion". It is
+// also the source attribute Claude sees on every event, and so the name a
+// transcript records a delivered message under.
+//
+// It lives here, at the bottom of the import graph, because the two ends
+// of the channel both have to agree on it: the channel serves under it,
+// and the daemon reads a transcript for it.
+const ServerName = "claude-companion"
+
 // ProtocolVersion is the revision this server negotiates. It is
 // deliberately not the newest: Claude Code refuses to register a channel
 // that negotiates revision 2026-07-28 when its MCP client runs with

@@ -58,7 +58,7 @@ func TestWatchOpensOneLiveCard(t *testing.T) {
 	d.startWatch(context.Background(), s)
 	defer d.closeWatch(context.Background(), "sess-1", "")
 
-	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🔵 Working") {
 		t.Fatalf("cards = %v, want one live card", titles)
 	}
 	if !strings.Contains(rec.cards[0], "Reading the auth package.") {
@@ -97,9 +97,10 @@ func TestWatchUpdatesTheSameCardInPlace(t *testing.T) {
 	}
 }
 
-// One turn, one message: the completion notification settles the very card
-// the user has been watching rather than adding another.
-func TestFinishedTurnSettlesTheWatchedCard(t *testing.T) {
+// One turn, one message: the card the user has been watching is recalled
+// as the turn ends and the completion takes its place, so the conversation
+// still holds exactly one message for the turn - one that notifies.
+func TestFinishedTurnReplacesTheWatchedCard(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
 	path := watchable(t, d)
 	s, _ := d.reg.Get("sess-1")
@@ -115,16 +116,15 @@ func TestFinishedTurnSettlesTheWatchedCard(t *testing.T) {
 	if d.watching("sess-1") {
 		t.Error("the turn ended; nothing should still be watching it")
 	}
-	if len(rec.cards) != 1 {
-		t.Fatalf("cards = %d, want the completion to reuse the live card", len(rec.cards))
+	if len(rec.deleted) != 1 || rec.deleted[0] != live {
+		t.Fatalf("deleted = %v, want the watched card recalled", rec.deleted)
 	}
-	updates := rec.updates[live]
-	if len(updates) == 0 {
-		t.Fatalf("the watched card was never settled")
+	if len(rec.cards) != 2 {
+		t.Fatalf("cards = %d, want the live card and the completion that replaced it", len(rec.cards))
 	}
-	final := updates[len(updates)-1]
+	final := rec.cards[1]
 	if got := cardTitle(t, final); !strings.HasPrefix(got, "✅ Completed") {
-		t.Errorf("settled card = %q, want the completion", got)
+		t.Errorf("outcome card = %q, want the completion", got)
 	}
 	if strings.Contains(final, "Stop watching") {
 		t.Errorf("a settled card must not still offer to stop watching: %s", final)
@@ -254,7 +254,7 @@ func TestWatchButtonOpensTheLiveView(t *testing.T) {
 	if !d.watching("sess-1") {
 		t.Fatal("the Watch button did not open the live view")
 	}
-	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🔵 Working") {
 		t.Errorf("cards = %v", titles)
 	}
 }
@@ -274,7 +274,7 @@ func TestStoppingTheDaemonPutsLiveCardsToRest(t *testing.T) {
 		t.Error("watches should be closed with the daemon")
 	}
 	updates := rec.updates[live]
-	if len(updates) == 0 || strings.HasPrefix(cardTitle(t, updates[len(updates)-1]), "🟢 Working") {
+	if len(updates) == 0 || strings.HasPrefix(cardTitle(t, updates[len(updates)-1]), "🔵 Working") {
 		t.Errorf("the live card was left running: %v", updates)
 	}
 }

@@ -46,11 +46,15 @@ type Message struct {
 	MessageID string
 }
 
-// CardAction is a button the user tapped on a card.
+// CardAction is a button the user tapped on a card, or a reply they typed
+// into one.
 type CardAction struct {
-	// Value is the button's payload, as the card wrote it.
+	// Value is the control's payload, as the card wrote it.
 	Value json.RawMessage
-	// MessageID is the card the button belongs to, so it can be settled in
+	// Input is what the user typed, empty for a button. Like a message, it
+	// is only ever carried after the sender has been checked.
+	Input string
+	// MessageID is the card the control belongs to, so it can be settled in
 	// place rather than replaced by a new one.
 	MessageID string
 }
@@ -147,7 +151,11 @@ func (in *Inbound) onCardAction(_ context.Context, event *callback.CardActionTri
 		messageID = event.Event.Context.OpenMessageID
 	}
 	select {
-	case in.actions <- CardAction{Value: value, MessageID: messageID}:
+	case in.actions <- CardAction{
+		Value:     value,
+		Input:     strings.TrimSpace(event.Event.Action.InputValue),
+		MessageID: messageID,
+	}:
 	default:
 		debuglog.Printf("inbound: dropped a card action; the daemon is not keeping up")
 	}

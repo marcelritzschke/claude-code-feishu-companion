@@ -8,8 +8,10 @@ import (
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
 // overviewWords are the things a user types when they want to see what is
@@ -34,7 +36,12 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 	if text == "" {
 		return
 	}
+	// What the user said is never traced - it is the one thing here that
+	// is theirs. That it arrived, and where it went, is what makes a
+	// message that vanished diagnosable at all.
+	debuglog.Printf("inbound message from Feishu (%d characters)", len(text))
 	if overviewWords[strings.ToLower(strings.Trim(text, " ?."))] {
+		debuglog.Printf("read as a request for the overview")
 		d.showOverview(ctx)
 		return
 	}
@@ -70,6 +77,7 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		// Nothing is selected, so there is nowhere this message could go
 		// that the user chose. Guessing would break the one promise that
 		// makes remote continuation safe.
+		debuglog.Printf("no session is selected; asking which one")
 		d.say(ctx, "Which session should this go to?")
 		d.showOverview(ctx)
 		return
@@ -101,6 +109,7 @@ func (d *Daemon) pickFromOverview(text string) (string, bool) {
 // and tells them what became of it.
 func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text string) {
 	if !s.Remote.Continuable() {
+		debuglog.Printf("%s is %s; not delivering", s.Describe(), s.Remote)
 		d.say(ctx, s.Label()+" can only send you notifications. It was started without Claude Companion enabled, "+
 			"so it cannot receive messages. Open Claude Code to continue it.")
 		return
@@ -117,7 +126,7 @@ func (d *Daemon) sendToSession(ctx context.Context, s session.Session, text stri
 		return
 	}
 	d.reg.MarkWorking(s.ID)
-	d.expectDelivery(s.ID)
+	d.expectDelivery(s, before)
 	d.say(ctx, deliveryAnswer(s, before))
 	debuglog.Printf("delivered a message to %s", s.Describe())
 }
@@ -172,9 +181,36 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 		d.closeWatch(ctx, act.Session, "You stopped watching this session.")
 	case notify.ActionInterrupt:
 		d.interruptSession(ctx, act.Session)
+	case notify.ActionSay:
+		d.replyOnCard(ctx, act.Session, action.Input)
 	default:
 		debuglog.Printf("ignoring unknown card action %q", act.Kind)
 	}
+}
+
+// replyOnCard sends what the user typed in a card's reply box to the
+// session that card is about.
+//
+// It is the shortest path this product has: the card already names one
+// session, so there is nothing to select, nothing to number, and nothing
+// to guess. Everything after the routing is the ordinary send, so a card
+// reply and a typed message reach a session by exactly one road.
+func (d *Daemon) replyOnCard(ctx context.Context, id, text string) {
+	if text == "" {
+		return // an empty box submitted by accident
+	}
+	s, ok := d.reg.Get(id)
+	if !ok {
+		d.say(ctx, "That session has ended.")
+		d.showOverview(ctx)
+		return
+	}
+	// Answering a card is also choosing a session: whatever the user types
+	// next, without a card in front of them, must go where they were just
+	// talking.
+	d.reg.Select(id)
+	debuglog.Printf("card reply to %s", s.Describe())
+	d.sendToSession(ctx, s, text)
 }
 
 // selectSession points the user's next messages at one session and says so.
@@ -255,42 +291,82 @@ func (d *Daemon) stopWatchRequest(ctx context.Context) {
 	}
 }
 
-// deliveryProof is how long a message has to produce some sign of life from
-// its session before Claude Companion stops believing it arrived.
+// How long a session has to show a pushed message in its transcript before
+// Claude Companion stops believing it arrived.
 //
-// It exists because Claude Code never acknowledges a channel event: a
-// session that did not register Claude Companion drops every message in silence,
-// and the only honest way to find that out is that nothing happens.
-const deliveryProof = 90 * time.Second
+// These exist because Claude Code never acknowledges a channel event: a
+// session that did not register Claude Companion as a channel drops every
+// message in silence, and the only honest way to find that out is that
+// nothing happens. How long "nothing" has to last depends on what the
+// session was doing: one that was resting reads a message at once, while
+// one mid-turn reads it after, and being told a message failed while it is
+// merely waiting its turn would be worse than saying nothing.
+const (
+	idleProof    = 20 * time.Second
+	queuedProof  = 90 * time.Second
+	deliveryPoll = 5 * time.Second
+)
 
-// expectDelivery starts waiting for proof that a pushed message arrived.
-func (d *Daemon) expectDelivery(sessionID string) {
+// expectDelivery starts waiting for proof that a pushed message arrived,
+// which is the message itself appearing in the session's transcript.
+func (d *Daemon) expectDelivery(s session.Session, before session.State) {
+	now := time.Now()
+	del := &delivery{
+		sessionID:  s.ID,
+		sentAt:     now,
+		transcript: s.Transcript,
+		grewAt:     now,
+		queued:     before != session.Idle,
+	}
+	del.offset = transcript.Size(s.Transcript)
+	del.size = del.offset
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.awaiting[sessionID] = &delivery{sessionID: sessionID, sentAt: time.Now()}
+	d.awaiting[s.ID] = del
 }
 
 // confirmDelivery records that a session did something after being
-// messaged, which is proof enough that it heard.
+// messaged. It settles only a delivery there is no transcript to check,
+// because a session busy with its own work produces these constantly -
+// and a message dropped on the way in would be confirmed by every one of
+// them.
 func (d *Daemon) confirmDelivery(sessionID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	delete(d.awaiting, sessionID)
+	if del, ok := d.awaiting[sessionID]; ok && del.transcript == "" {
+		delete(d.awaiting, sessionID)
+	}
 }
 
 // expireDeliveries tells the user about messages that went nowhere, and
 // stops offering the sessions that swallowed them.
 func (d *Daemon) expireDeliveries(ctx context.Context) {
-	cutoff := time.Now().Add(-deliveryProof)
 	d.mu.Lock()
-	var lost []*delivery
-	for id, del := range d.awaiting {
-		if del.sentAt.Before(cutoff) {
-			lost = append(lost, del)
-			delete(d.awaiting, id)
-		}
+	pending := make([]*delivery, 0, len(d.awaiting))
+	for _, del := range d.awaiting {
+		pending = append(pending, del)
 	}
 	d.mu.Unlock()
+
+	var lost []*delivery
+	for _, del := range pending {
+		s, live := d.reg.Get(del.sessionID)
+		switch {
+		case !live:
+			d.settleDelivery(del.sessionID) // the session ended; nothing to report
+		case del.transcript == "":
+			// Nothing to read: hook activity is the only signal, and
+			// confirmDelivery is where it lands.
+		case transcript.Delivered(del.transcript, del.offset, mcp.ServerName):
+			d.settleDelivery(del.sessionID)
+			debuglog.Printf("message to %s arrived", s.Describe())
+		case d.stillReaching(del, s):
+		default:
+			lost = append(lost, del)
+			d.settleDelivery(del.sessionID)
+		}
+	}
 
 	for _, del := range lost {
 		s, ok := d.reg.Get(del.sessionID)
@@ -299,7 +375,35 @@ func (d *Daemon) expireDeliveries(ctx context.Context) {
 		}
 		d.reg.Downgrade(del.sessionID)
 		d.say(ctx, "Claude Companion could not reach "+s.Label()+", and your message was not delivered.\n"+
-			"That session was most likely started without channels enabled.")
-		debuglog.Printf("delivery to %s went unanswered; downgraded", s.Describe())
+			"That session is not listening on the Claude Companion channel. Restart it with:\n"+
+			"claude --dangerously-load-development-channels server:"+mcp.ServerName)
+		debuglog.Printf("message to %s never reached the session; downgraded", s.Describe())
 	}
+}
+
+// stillReaching reports whether a message that has not shown up yet still
+// has reason to. A turn already running is read first and the message
+// after it, so neither a session working through one nor a session
+// blocked on the user has failed to hear anything.
+func (d *Daemon) stillReaching(del *delivery, s session.Session) bool {
+	if s.State == session.Waiting {
+		return true // blocked on a decision, exactly as the user was told
+	}
+	if size := transcript.Size(del.transcript); size > del.size {
+		del.size, del.grewAt = size, time.Now()
+		del.queued = true // a turn is being written; the message is behind it
+		return true
+	}
+	proof := idleProof
+	if del.queued {
+		proof = queuedProof
+	}
+	return time.Since(del.grewAt) < proof
+}
+
+// settleDelivery stops waiting on a message, however it turned out.
+func (d *Daemon) settleDelivery(sessionID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.awaiting, sessionID)
 }

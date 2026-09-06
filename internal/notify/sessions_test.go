@@ -292,15 +292,16 @@ func TestPermissionHandledLocallyCard(t *testing.T) {
 	}
 }
 
-// A [ Continue ] button is what turns a notification into the start of the
-// next instruction.
-func TestOptionsAddAContinueButton(t *testing.T) {
-	with := Options{ContinueSession: "sess-1"}.buttons()
-	if len(with) != 1 || with[0].Action.Kind != ActionSelect || with[0].Action.Session != "sess-1" {
-		t.Errorf("buttons = %+v", with)
+// A reply box is what turns a notification into the start of the next
+// instruction: the card names one session, so answering it needs no
+// selection and no round trip through the overview.
+func TestOptionsAddAReplyBox(t *testing.T) {
+	with, ok := replyTo("sess-1").(Reply)
+	if !ok || with.Action.Kind != ActionSay || with.Action.Session != "sess-1" {
+		t.Errorf("reply = %+v", with)
 	}
-	if got := (Options{}).buttons(); len(got) != 0 {
-		t.Errorf("buttons = %+v, want none when there is no session to continue", got)
+	if got := replyTo(""); got != nil {
+		t.Errorf("reply = %+v, want none when there is no session to answer", got)
 	}
 }
 

@@ -100,7 +100,8 @@ func SelectedCard(s session.Session) (string, error) {
 		})
 		footer += "\nOr tap Watch, or reply  watch  , to see what it is doing."
 	}
-	return card("blue", s.Label(), "", bodies, buttons, footer)
+	sections := append(proseOf(bodies), replyTo(continuable(s)))
+	return cardOf("blue", s.Label(), "", sections, buttons, footer)
 }
 
 // sessionIdentity is the block that names a session on its own card: its

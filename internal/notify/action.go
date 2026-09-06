@@ -31,6 +31,9 @@ const (
 	// ActionInterrupt stops a session's current turn, returning the session
 	// to its prompt. It never terminates the session itself.
 	ActionInterrupt = "interrupt"
+	// ActionSay sends what the user typed in a card's reply box to the
+	// session that card is about.
+	ActionSay = "say"
 )
 
 // Verdicts a permission button carries.
@@ -46,6 +49,17 @@ func ParseAction(raw json.RawMessage) (Action, bool) {
 		return Action{}, false
 	}
 	return a, true
+}
+
+// replyTo is the box a card offers for typing straight to one session.
+func replyTo(sessionID string) Section {
+	if sessionID == "" {
+		return nil
+	}
+	return Reply{
+		Placeholder: "Message this session",
+		Action:      Action{Kind: ActionSay, Session: sessionID},
+	}
 }
 
 // Button is one card button.

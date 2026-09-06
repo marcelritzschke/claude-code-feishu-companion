@@ -30,7 +30,7 @@ func TestWorkOpensTheSessionCardAutomatically(t *testing.T) {
 	if !d.watching("sess-1") {
 		t.Fatal("a working session should carry its own live card")
 	}
-	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🟢 Working") {
+	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🔵 Working") {
 		t.Fatalf("cards = %v, want the session card and nothing else", titles)
 	}
 	// Windows cannot deliver an interrupt to another console's process, so
@@ -114,10 +114,42 @@ func TestPermissionRequestTurnsTheSessionCardToWaiting(t *testing.T) {
 	}
 }
 
-// A settled card cannot push a notification, so the outcome is also said
-// out loud - once, and only when the turn did reportable work.
-func TestFinishedTurnSettlesTheCardAndPings(t *testing.T) {
+// The live card is recalled when its turn ends, so the outcome arrives as
+// a new message the user is actually notified of - one message for the
+// turn, and no second one saying the same thing.
+func TestFinishedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
+	path := watchable(t, d)
+
+	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
+		"transcript_path": path,
+		"tool_name":       "Read",
+	})
+	live := rec.ids[0]
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"transcript_path":        path,
+		"last_assistant_message": "Consolidated the refresh validation.",
+	})
+
+	if len(rec.deleted) != 1 || rec.deleted[0] != live {
+		t.Fatalf("deleted = %v, want the live card recalled", rec.deleted)
+	}
+	titles := rec.titles(t)
+	if len(titles) != 2 || !strings.HasPrefix(titles[1], "✅ Completed") {
+		t.Errorf("cards = %v, want the live card followed by the outcome", titles)
+	}
+	if len(rec.texts) != 0 {
+		t.Errorf("texts = %v, want the outcome card to be the only message", rec.texts)
+	}
+}
+
+// A recall Feishu refuses leaves the outcome to settle the live card in
+// place, which notifies nobody - so that turn, and only that turn, is also
+// said out loud.
+func TestOutcomeStrandedOnAnUnrecallableCardIsSaidOutLoud(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	rec.failDelete = true
 	path := watchable(t, d)
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
@@ -143,7 +175,7 @@ func TestFinishedTurnSettlesTheCardAndPings(t *testing.T) {
 	}
 }
 
-func TestFailedTurnSettlesTheCardAndPings(t *testing.T) {
+func TestFailedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
 	path := watchable(t, d)
 
@@ -158,15 +190,15 @@ func TestFailedTurnSettlesTheCardAndPings(t *testing.T) {
 		"error":           "rate_limit",
 	})
 
-	updates := rec.updates[live]
-	if len(updates) == 0 {
-		t.Fatal("the session card was never settled")
+	if len(rec.deleted) != 1 || rec.deleted[0] != live {
+		t.Fatalf("deleted = %v, want the live card recalled", rec.deleted)
 	}
-	if got := cardTitle(t, updates[len(updates)-1]); !strings.HasPrefix(got, "🔴 Failed") {
-		t.Errorf("settled card = %q", got)
+	titles := rec.titles(t)
+	if len(titles) != 2 || !strings.HasPrefix(titles[1], "🔴 Failed") {
+		t.Errorf("cards = %v, want the live card followed by the failure", titles)
 	}
-	if len(rec.texts) != 1 || !strings.HasPrefix(rec.texts[0], "🔴 Failed") {
-		t.Errorf("pings = %v, want exactly one failure ping", rec.texts)
+	if len(rec.texts) != 0 {
+		t.Errorf("texts = %v, want the failure card to be the only message", rec.texts)
 	}
 }
 

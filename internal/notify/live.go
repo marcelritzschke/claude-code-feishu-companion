@@ -51,8 +51,13 @@ func SessionCard(s session.Session, turn *transcript.Turn, view SessionView) (st
 // progress, the few actions behind it, and how recently anything was
 // observed. A session Claude Companion cannot control says so on the card
 // itself rather than offering controls that would not work.
+//
+// It is blue rather than green, because green is the colour of a turn that
+// is over. A card that keeps its colour from the first tool call to the
+// outcome would make the one thing the user looks for - is this finished? -
+// the one thing they cannot see at a glance.
 func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
-	template, title := "green", "🟢 Working"+elapsedSuffix(turn)
+	template, title := "blue", "🔵 Working"+elapsedSuffix(turn)
 	footer := activityNote(view.ActivityAt)
 	var buttons []Button
 	switch {
@@ -70,8 +75,21 @@ func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 	if notes := notesBody(view.Notes); notes != "" {
 		fixed = append(fixed, Prose(notes))
 	}
-	sections := withActivity(fixed, turn.Steps, buttons, footer)
+	// The reply box goes last, under everything the card has to say: it is
+	// the answer to what the user just read.
+	tail := []Section{replyTo(continuable(s))}
+	sections := withActivity(fixed, turn.Steps, tail, buttons, footer)
 	return cardOf(template, title, s.Describe(), sections, buttons, footer)
+}
+
+// continuable is the session id a card may offer to talk to, empty when
+// this session cannot be continued from here. A box that swallowed
+// messages a session will never read would be worse than no box.
+func continuable(s session.Session) string {
+	if !s.Remote.Continuable() {
+		return ""
+	}
+	return s.ID
 }
 
 // withActivity places a turn's activity after the sections that always
@@ -81,18 +99,31 @@ func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 // depends on the rest of the card: a session that can be interrupted
 // spends elements on a button, and every section costs a rule to separate
 // it from the one before.
-func withActivity(fixed []Section, steps []transcript.Step, buttons []Button, footer string) []Section {
-	spent := 0
+func withActivity(fixed []Section, steps []transcript.Step, tail []Section, buttons []Button, footer string) []Section {
+	spent, sections := 0, len(fixed)
 	for _, sec := range fixed {
 		spent += sec.cost()
 	}
+	for _, sec := range tail {
+		if sec == nil {
+			continue
+		}
+		spent += sec.cost()
+		sections++
+	}
 	// The activity arrives as a single block, so it adds exactly one more
 	// section and therefore exactly one more rule.
-	budget := elementBudget - spent - chromeCost(len(fixed)+1, buttons, footer)
+	budget := elementBudget - spent - chromeCost(sections+1, buttons, footer)
+	out := fixed
 	if activity := activitySections(steps, budget); activity != nil {
-		return append(fixed, activity)
+		out = append(out, activity)
 	}
-	return fixed
+	for _, sec := range tail {
+		if sec != nil {
+			out = append(out, sec)
+		}
+	}
+	return out
 }
 
 // waitingSessionCard is the session card while Claude is blocked on the
@@ -105,7 +136,8 @@ func waitingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 		title, body = "🟠 Waiting for answer", "Claude needs your answer before continuing."
 	}
 	bodies := []string{body, "**Where it got to**\n" + currentProgress(turn), notesBody(view.Notes)}
-	return card("orange", title+elapsedSuffix(turn), s.Describe(), bodies, nil, "")
+	sections := append(proseOf(bodies), replyTo(continuable(s)))
+	return cardOf("orange", title+elapsedSuffix(turn), s.Describe(), sections, nil, "")
 }
 
 // notesBody renders the turn's decision records, empty when there are none.
@@ -125,15 +157,8 @@ func InterruptedSessionCard(s session.Session, turn *transcript.Turn) (string, e
 		"You interrupted this turn. The session is back at its prompt in Claude Code.",
 		"**Where it got to**\n" + currentProgress(turn),
 	}
-	var buttons []Button
-	if s.Remote.Continuable() {
-		buttons = append(buttons, Button{
-			Label:  "Continue",
-			Style:  stylePrimary,
-			Action: Action{Kind: ActionSelect, Session: s.ID},
-		})
-	}
-	return card("grey", "⏹️ Interrupted"+elapsedSuffix(turn), s.Describe(), bodies, buttons, "")
+	sections := append(proseOf(bodies), replyTo(continuable(s)))
+	return cardOf("grey", "⏹️ Interrupted"+elapsedSuffix(turn), s.Describe(), sections, nil, "")
 }
 
 // SettledWatchCard is what a session card becomes when there is nothing
@@ -158,16 +183,8 @@ func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (st
 		bodies = append(bodies, "**Validation**\n"+strings.Join(v, "\n"))
 	}
 
-	var buttons []Button
-	if s.Remote.Continuable() {
-		buttons = append(buttons, Button{
-			Label:  "Continue",
-			Style:  stylePrimary,
-			Action: Action{Kind: ActionSelect, Session: s.ID},
-		})
-	}
-	return cardOf(template, title+elapsedSuffix(turn), s.Describe(),
-		withHistory(proseOf(bodies), turn), buttons, note)
+	sections := append(withHistory(proseOf(bodies), turn), replyTo(continuable(s)))
+	return cardOf(template, title+elapsedSuffix(turn), s.Describe(), sections, nil, note)
 }
 
 // WatchStoppedCard leaves a session card at rest while its turn is still
@@ -175,18 +192,11 @@ func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (st
 // finished, and the ordinary completion notification is still to come.
 func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
 	bodies := []string{"**Where it got to**\n" + currentProgress(turn)}
-	var buttons []Button
-	if s.Remote.Continuable() {
-		buttons = append(buttons, Button{
-			Label:  "Continue",
-			Style:  stylePrimary,
-			Action: Action{Kind: ActionSelect, Session: s.ID},
-		})
-	}
 	if note == "" {
 		note = "Claude is still working. Claude Companion will tell you when it finishes."
 	}
-	return card("grey", "⏸️ No longer live", s.Describe(), bodies, buttons, note)
+	sections := append(proseOf(bodies), replyTo(continuable(s)))
+	return cardOf("grey", "⏸️ No longer live", s.Describe(), sections, nil, note)
 }
 
 // LiveSignature is everything on a session card that is worth rewriting

@@ -37,7 +37,7 @@ func TestSessionCardAnswersWhatClaudeIsDoing(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"🟢 Working · 6m 12s",
+		"🔵 Working · 6m 12s",
 		"Fix token refresh · payments-api",
 		"Current progress",
 		"Found duplicate refresh validation.",
@@ -261,7 +261,7 @@ func TestInterruptedCardPreservesTheSession(t *testing.T) {
 	for _, want := range []string{
 		"⏹️ Interrupted",
 		"back at its prompt",
-		"Continue",
+		"Message this session",
 	} {
 		if !strings.Contains(card, want) {
 			t.Errorf("interrupted card is missing %q: %s", want, card)
@@ -287,7 +287,7 @@ func TestSettledWatchCardIsAnOutcomeAndAWayBack(t *testing.T) {
 		"Implemented token rotation and consolidated refresh validation.",
 		"Validation",
 		"✓ go test ./... passed",
-		"Continue",
+		"Message this session",
 	} {
 		if !strings.Contains(card, want) {
 			t.Errorf("settled card is missing %q: %s", want, card)

@@ -15,7 +15,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
@@ -27,10 +29,8 @@ import (
 )
 
 // ServerName is what the session opts in by name, as
-// "--dangerously-load-development-channels server:claude-companion". It is
-// also the MCP server name, and so the source attribute Claude sees on
-// every event.
-const ServerName = "claude-companion"
+// "--dangerously-load-development-channels server:claude-companion".
+const ServerName = mcp.ServerName
 
 // Version is what the channel reports as its MCP server version.
 const Version = "2.0.0"
@@ -204,7 +204,7 @@ func describeSession() ipc.Register {
 	if dir == "" {
 		dir = cwd
 	}
-	pid, _ := strconv.Atoi(os.Getenv("CLAUDE_PID"))
+	pid := sessionPID()
 
 	id := os.Getenv("CLAUDE_CODE_SESSION_ID")
 	if id == "" && pid != 0 {
@@ -221,6 +221,51 @@ func describeSession() ipc.Register {
 		ProjectDir: os.Getenv("CLAUDE_PROJECT_DIR"),
 		Remote:     readiness(pid),
 	}
+}
+
+// sessionPID is the Claude Code process this channel belongs to, or zero
+// when that cannot be established.
+//
+// CLAUDE_PID looks like the answer and often is not. Claude Code sets it
+// for the hooks it runs, and every process a session starts inherits it -
+// so a Claude Code session started from inside another one hands its
+// channel the other session's pid. Reading that process's command line
+// then answers a question about a session this channel has nothing to do
+// with, and answers it confidently: a session that takes remote messages
+// perfectly well is labelled "notifications only", and the daemon refuses
+// to deliver to it.
+//
+// CLAUDE_CODE_MESSAGING_SOCKET is named after the session's own process,
+// so the two agreeing is what makes an inherited value this channel's own.
+// They disagree, or the socket is not there to ask: zero, and the honest
+// "unconfirmed" that follows from it.
+func sessionPID() int {
+	pid, err := strconv.Atoi(os.Getenv("CLAUDE_PID"))
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	if pid != messagingSocketPID() {
+		debuglog.Printf("channel: ignoring an inherited CLAUDE_PID (%d)", pid)
+		return 0
+	}
+	return pid
+}
+
+// messagingSocketPID reads the session's process id out of the path Claude
+// Code hands each of its subprocesses for talking back to the session:
+// ".../cc-socks/<pid>.sock". It is zero when the variable is absent or
+// shaped differently, which is a reason to know less rather than to guess.
+func messagingSocketPID() int {
+	sock := os.Getenv("CLAUDE_CODE_MESSAGING_SOCKET")
+	if sock == "" {
+		return 0
+	}
+	name := strings.TrimSuffix(filepath.Base(sock), ".sock")
+	pid, err := strconv.Atoi(name)
+	if err != nil {
+		return 0
+	}
+	return pid
 }
 
 // readiness reports whether this session will accept injected messages.

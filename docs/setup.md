@@ -16,13 +16,16 @@ The installer detects macOS or Linux and amd64 or arm64, downloads the
 matching
 [GitHub Release](https://github.com/marcelritzschke/claude-code-feishu-companion/releases),
 verifies it against the release's `checksums.txt`, and installs it to
-`~/.local/bin`.
+`~/.local/bin`. It then hands the terminal to `claude-companion init`, so the
+one line both installs and sets up. Piped into a shell with no terminal
+attached - a Dockerfile, CI - it installs and prints how to run setup later,
+and `SKIP_INIT=1` asks for that on a terminal too.
 
-Set `INSTALL_DIR` to choose another location or `VERSION` to install a specific
-tag:
+Set `INSTALL_DIR` to choose another location, `VERSION` to install a specific
+tag, or `SKIP_INIT` to install without starting setup:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | INSTALL_DIR=/usr/local/bin SKIP_INIT=1 sh
 ```
 
 The script above is [`install.sh`](../install.sh) at the repository root, so
@@ -38,7 +41,8 @@ go install github.com/marcelritzschke/claude-code-feishu-companion@latest
 
 ## QR onboarding
 
-Run:
+The installer starts this itself. Run it by hand after a `SKIP_INIT=1`
+install, or to redo setup later:
 
 ```sh
 claude-companion init

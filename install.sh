@@ -3,16 +3,19 @@
 # architecture, downloads the matching archive, verifies it against the
 # release's checksums.txt, and installs the binary.
 #
+# It then hands the terminal to `claude-companion init`, so one pasted line
+# both installs and sets up. Nothing else is run on the user's behalf.
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 #
 # Env vars:
 #   VERSION      release tag to install, e.g. "v1.2.3" (default: latest)
 #   INSTALL_DIR  where to put the binary (default: "$HOME/.local/bin")
+#   SKIP_INIT    set to 1 to install only and not start setup
 #
 # This script only reads $HOME and the paths above; it never touches
-# ~/.config/claude-companion or ~/.cache/claude-companion, and it runs
-# `claude-companion` itself only via --version, to confirm the install worked.
+# ~/.config/claude-companion or ~/.cache/claude-companion.
 
 set -eu
 
@@ -27,6 +30,15 @@ log() {
 die() {
 	log "install.sh: $*"
 	exit 1
+}
+
+# next_step says why setup did not start and how to start it by hand. It
+# names $dest, the installed binary, because that path works whether or not
+# the install directory is on PATH.
+next_step() {
+	log ""
+	log "$*"
+	log "Run '$dest init' to connect a Feishu app and this machine."
 }
 
 need() {
@@ -154,8 +166,31 @@ main() {
 		"$dest" --version || true
 	fi
 
+	# Setup runs from here so that the install is a single pasted line. The
+	# temporary directory goes first: exec replaces this shell, and an
+	# exec'd process never reaches the EXIT trap.
+	rm -rf "$workdir"
+	trap - EXIT INT TERM
+
+	if [ "${SKIP_INIT:-0}" = 1 ]; then
+		next_step "SKIP_INIT is set, so setup was not started."
+		return 0
+	fi
+
+	# This script's own stdin is the curl pipe, so init reads the terminal
+	# directly. Without one - a Dockerfile, CI - there is nothing to hand
+	# over and setup stays for the user to run later. The probe opens
+	# /dev/tty rather than testing it: the device node exists even in a
+	# session that has no terminal behind it, where opening fails. The
+	# subshell keeps that failure from ending this script, which some
+	# shells would do for a redirection error on a special builtin.
+	if ! ( : </dev/tty ) 2>/dev/null; then
+		next_step "No terminal is attached, so setup was not started."
+		return 0
+	fi
+
 	log ""
-	log "Next: run '$name init' to connect a Feishu app and this machine."
+	exec "$dest" init </dev/tty
 }
 
 main "$@"

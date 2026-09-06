@@ -56,7 +56,7 @@ On macOS or Linux, copy and run this one line. It installs the binary and
 immediately starts Feishu onboarding:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh && "$HOME/.local/bin/claude-companion" init
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
 The installer downloads the matching self-contained binary from

@@ -54,7 +54,7 @@ Claude Code Feishu Companion：
 在 macOS 或 Linux 上复制并运行这一行命令。它会安装程序，并立即开始飞书引导：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh && "$HOME/.local/bin/claude-companion" init
+curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
 安装程序会从 [GitHub Releases](https://github.com/marcelritzschke/claude-code-feishu-companion/releases)

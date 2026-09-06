@@ -1,5 +1,11 @@
 # Claude Code Feishu Companion
 
+[![CI](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/marcelritzschke/claude-code-feishu-companion/total)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/marcelritzschke/claude-code-feishu-companion)](LICENSE)
+
 **原生 Claude Code 飞书 Channel——从飞书/Lark 继续正在运行的 Claude Code 会话，
 不创建、不替换、也不包装 Claude Code。**
 

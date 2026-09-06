@@ -1,6 +1,12 @@
 # Claude Code Feishu Companion
 
-**Native Claude Code Channel for Feishu/Lark — continue existing running Claude Code sessions without spawning, replacing, or wrapping Claude Code.**
+[![CI](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/marcelritzschke/claude-code-feishu-companion/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/marcelritzschke/claude-code-feishu-companion/total)](https://github.com/marcelritzschke/claude-code-feishu-companion/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/marcelritzschke/claude-code-feishu-companion)](https://github.com/marcelritzschke/claude-code-feishu-companion/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/marcelritzschke/claude-code-feishu-companion)](LICENSE)
+
+Native Claude Code Channel for Feishu/Lark — continue existing running Claude Code sessions without spawning, replacing, or wrapping Claude Code.
 
 **English** | [简体中文](README.zh-CN.md)
 

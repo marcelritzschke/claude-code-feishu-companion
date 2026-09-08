@@ -22,6 +22,10 @@
   🌐 <strong><a href="README.zh-CN.md">简体中文</a></strong>
 </p>
 
+<p align="center">
+  <img src="docs/assets/companion-demo.gif" alt="Demo of continuing a running Claude Code session from Feishu" width="960">
+</p>
+
 ## Native Claude Code Channel — not a CLI bridge
 
 Claude Code Feishu Companion connects Feishu/Lark through a native Channel to

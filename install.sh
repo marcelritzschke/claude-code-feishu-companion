@@ -75,7 +75,14 @@ detect_os() {
 	Linux) echo linux ;;
 	Darwin) echo darwin ;;
 	MINGW* | MSYS* | CYGWIN*)
-		die "this script does not support Windows; download the .zip release asset from https://github.com/$repo/releases and add it to your PATH"
+		# Git Bash and friends cannot run this install: the Windows release
+		# is a .zip and the tar here is GNU tar, which does not read one.
+		# install.ps1 is the same install for Windows.
+		log "install.sh: this script does not support Windows. In PowerShell, run:"
+		log ""
+		log "  irm https://raw.githubusercontent.com/$repo/main/install.ps1 | iex"
+		log ""
+		die "run the line above in PowerShell instead"
 		;;
 	*) die "unsupported OS: $uname_s" ;;
 	esac

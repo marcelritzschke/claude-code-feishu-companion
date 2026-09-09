@@ -29,9 +29,36 @@ curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-
 ```
 
 The script above is [`install.sh`](../install.sh) at the repository root, so
-it can be inspected before running. On Windows, download the `.zip` from the
-releases page, verify it against the release checksums, and put
-`claude-companion.exe` on your `PATH`.
+it can be inspected before running.
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.ps1 | iex
+```
+
+[`install.ps1`](../install.ps1) is the same install in PowerShell: it detects
+amd64 or arm64, downloads the matching `.zip`, verifies it against the
+release's `checksums.txt`, installs `claude-companion.exe` to
+`%LOCALAPPDATA%\Programs\claude-companion`, adds that directory to your user
+`PATH`, and hands the console to `claude-companion init`. The same
+`VERSION`, `INSTALL_DIR`, and `SKIP_INIT` environment variables apply:
+
+```powershell
+$env:INSTALL_DIR = "C:\tools\claude-companion"; $env:SKIP_INIT = "1"
+irm https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.ps1 | iex
+```
+
+Two Windows details it takes care of. A running daemon holds the program
+open and Windows will not overwrite a running image, so an install over an
+existing one stops the daemon and moves the old binary aside rather than
+writing through it. And files unpacked from a downloaded archive carry a
+mark of the web that Windows warns about on every run, which the installer
+clears once the release's own checksum has vouched for the bytes.
+
+Because the binary is not code-signed, SmartScreen may still warn the first
+time it is launched from Explorer. Starting it from a terminal, which is how
+Claude Companion is used, does not raise that prompt.
 
 If you already have a Go toolchain, this is also supported:
 

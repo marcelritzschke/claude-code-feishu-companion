@@ -53,16 +53,26 @@ flowchart LR
 
 ## Quick start
 
-On macOS or Linux, one command installs the binary and opens QR-based Feishu
-onboarding:
+One command installs the binary and opens QR-based Feishu onboarding.
+
+On macOS or Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.ps1 | iex
+```
+
+Both verify the download against the release's `checksums.txt` before
+installing anything, and both put the binary on your `PATH`.
+
 Scan the QR code to connect the app and make that Feishu account the owner.
-Existing app credentials, Windows archives, manual setup, and configuration
-options are covered in [Setup and configuration](docs/setup.md).
+Existing app credentials, manual setup, and configuration options are covered
+in [Setup and configuration](docs/setup.md).
 
 Start a session you want to continue remotely with:
 
@@ -126,9 +136,10 @@ design rationale.
   answered through a Channel; answer them in the original terminal.
 - The computer, Claude Code session, Claude Code Feishu Companion daemon, and
   network connection must remain running for remote continuation.
-- WSL and native Windows are separate installations. Remote interrupt is not
-  available on Windows, and remote status remains untested until the first
-  message confirms a session's Channel.
+- WSL and native Windows are separate installations, each needing its own
+  binary and `init`. Remote interrupt is not available on Windows, and remote
+  status remains untested until the first message confirms a session's
+  Channel.
 
 ## Contributing
 

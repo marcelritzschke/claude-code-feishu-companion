@@ -46,14 +46,25 @@ flowchart LR
 
 ## 快速开始
 
-在 macOS 或 Linux 上，一行命令即可安装程序并打开飞书二维码引导：
+一行命令即可安装程序并打开飞书二维码引导。
+
+在 macOS 或 Linux 上：
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.sh | sh
 ```
 
-扫描二维码即可连接应用，扫码账号会成为所有者。已有应用凭据、Windows 发布包、
-手动设置和配置选项请参阅[设置与配置（英文）](docs/setup.md)。
+在 Windows 上，使用 PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/marcelritzschke/claude-code-feishu-companion/main/install.ps1 | iex
+```
+
+两者都会先用发布版本的 `checksums.txt` 校验下载内容，再进行安装，并把程序加入
+`PATH`。
+
+扫描二维码即可连接应用，扫码账号会成为所有者。已有应用凭据、手动设置和配置选项
+请参阅[设置与配置（英文）](docs/setup.md)。
 
 需要从飞书远程继续的会话，请这样启动：
 
@@ -110,8 +121,9 @@ Claude Code Channels 把消息送入选定的运行中会话。
 - Claude Code 的多项选择 `AskUserQuestion` 提示无法通过 Channel 回答，需回到原终端。
 - 如需远程继续，电脑、Claude Code 会话、Claude Code Feishu Companion 守护进程和网络连接都必须
   保持运行。
-- WSL 与原生 Windows 属于两套独立安装。Windows 不支持远程中断；第一次消息确认
-  Channel 之前，远程状态会显示为 **Remote untested**。
+- WSL 与原生 Windows 属于两套独立安装，各自需要单独的程序和 `init`。Windows 不
+  支持远程中断；第一次消息确认 Channel 之前，远程状态会显示为
+  **Remote untested**。
 
 ## 参与贡献
 

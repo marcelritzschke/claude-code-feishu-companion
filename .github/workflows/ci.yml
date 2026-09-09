@@ -45,6 +45,50 @@ jobs:
         run: go build -o NUL .
         if: runner.os == 'Windows'
 
+  installer-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse and analyze install.ps1
+        shell: powershell
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\install.ps1), [ref]$null, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object {
+              Write-Host "::error file=install.ps1,line=$($_.Extent.StartLineNumber)::$($_.Message)"
+            }
+            exit 1
+          }
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $found = Invoke-ScriptAnalyzer -Path .\install.ps1 -Severity Warning,Error
+          if ($found) {
+            $found | Format-Table -AutoSize RuleName, Line, Message | Out-String | Write-Host
+            exit 1
+          }
+          Write-Host "install.ps1 is clean"
+
+      # The install is the one path no unit test covers: it downloads a real
+      # release, checks it against the real checksums.txt, and replaces a
+      # running image. SKIP_INIT stops it before Feishu onboarding, which
+      # needs a person with a phone.
+      - name: Install the latest release, twice
+        shell: powershell
+        env:
+          SKIP_INIT: "1"
+        run: |
+          $env:INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'companion-bin'
+          Get-Content -Raw .\install.ps1 | Invoke-Expression
+          $exe = Join-Path $env:INSTALL_DIR 'claude-companion.exe'
+          if (-not (Test-Path $exe)) { throw "install.ps1 left no binary at $exe" }
+          # Again, over the binary the first run installed: this is the
+          # replace-a-running-image path, and it must leave no .old behind.
+          Get-Content -Raw .\install.ps1 | Invoke-Expression
+          if (Test-Path "$exe.old") { throw "install.ps1 left a sidecar behind" }
+          & $exe --version
+
   goreleaser-check:
     runs-on: ubuntu-latest
     steps:

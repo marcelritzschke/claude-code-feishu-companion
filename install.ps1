@@ -127,7 +127,15 @@
     function Install-Binary([string]$Staged, [string]$Dest) {
         $old = "$Dest.old"
         if (Test-Path -LiteralPath $Dest) {
-            try { & $Dest daemon --stop 2>&1 | Out-Null } catch { }
+            # Best effort, and quiet either way: there may be no daemon to
+            # stop, and the program already installed may be too broken to
+            # ask. Neither is a reason to fail an install that is about to
+            # replace it.
+            try {
+                & $Dest daemon --stop 2>&1 | Out-Null
+            } catch {
+                Write-Debug "could not stop the running daemon: $($_.Exception.Message)"
+            }
             Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
             try {
                 Move-Item -LiteralPath $Dest -Destination $old -Force

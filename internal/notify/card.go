@@ -21,6 +21,9 @@ type Options struct {
 	// ContinueSession, when set, is the session this card may be answered
 	// to: it puts a reply box on the card, wired to that session.
 	ContinueSession string
+	// Reach, when set, says why this card has no reply box, or why the one
+	// it has may not be heard. See ReachNote.
+	Reach string
 }
 
 // Card JSON 2.0 - only the subset Claude Companion needs, marshalled by

@@ -41,18 +41,18 @@ include:
 - validation results and filenames extracted from the turn;
 - an excerpt of Claude's final answer;
 - tool and command details needed to understand a permission request;
-- while a session is being watched, a short description of the current work and
-  a few condensed recent actions.
+- while a turn is running, a short description of the current work and a few
+  condensed recent actions.
 
 Claude Companion does not upload a terminal stream or a complete session
 transcript. The transcript is read locally to produce the selected summary
 content.
 
-Watching is opt-in and per session. It is started explicitly from Feishu,
-sends no additional Claude Code events, and ends when the turn ends. While a
-session is watched, Claude Companion re-reads its transcript locally every
-few seconds and rewrites one existing card; it does not send a message per
-action, and it never sends model reasoning.
+The live session card sends no additional Claude Code events and lives only
+as long as the turn it describes. While one stands, Claude Companion
+re-reads that session's transcript locally every few seconds and rewrites
+the one existing card; it does not send a message per action, and it never
+sends model reasoning.
 
 The daemon also checks GitHub for a newer stable release at startup and
 every 24 hours, and sends one plain-text Feishu message the first time it
@@ -138,6 +138,12 @@ card still waiting in Feishu is not answerable across the restart, because
 pending prompts live only in the daemon's memory. Hook processes are
 started per event, so they pick the new version up immediately.
 
+A daemon can still end up older than the program on disk - a hook firing
+between the stop and the replacement starts one from the file that is about
+to go. It notices within a minute and stops, and the next hook or channel
+starts a current one; `claude-companion daemon --status` says so meanwhile.
+Nothing has to be restarted by hand.
+
 Render a notification without a configuration file or Feishu connection:
 
 ```sh
@@ -157,6 +163,7 @@ diagnostic installation from the default one.
 ## Windows and WSL
 
 WSL and native Windows are separate environments; each needs its own
-binary and `claude-companion init`. On Windows, Claude Companion cannot
-inspect a session's process command line, so the session appears as
-**Remote untested** until its first message confirms the channel.
+binary and `claude-companion init`. Claude Companion reads a session's own
+command line to find out whether that session opted its channel in - from
+procfs on Linux, `ps` on macOS, and the process's own parameter block on
+Windows - so all three say plainly whether a session can be replied to.

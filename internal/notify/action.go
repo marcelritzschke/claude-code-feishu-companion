@@ -20,20 +20,16 @@ type Action struct {
 
 // Action kinds.
 const (
-	// ActionSelect points the user's next messages at a session.
-	ActionSelect = "select"
 	// ActionPermit answers a relayed permission request.
 	ActionPermit = "permit"
-	// ActionWatch opens the live view of a session.
-	ActionWatch = "watch"
-	// ActionUnwatch closes it again.
-	ActionUnwatch = "unwatch"
 	// ActionInterrupt stops a session's current turn, returning the session
 	// to its prompt. It never terminates the session itself.
 	ActionInterrupt = "interrupt"
 	// ActionSay sends what the user typed in a card's reply box to the
 	// session that card is about.
 	ActionSay = "say"
+	// ActionProbe is setup's card callback check and means nothing else.
+	ActionProbe = "probe"
 )
 
 // Verdicts a permission button carries.

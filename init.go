@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
@@ -53,6 +55,7 @@ func runInit() error {
 	// arrow keys. Close gives it back, and must run whichever way this
 	// returns - including through a failure partway down.
 	defer tui.Close()
+	defer restoreOnSignal()()
 	tui.Title("Claude Companion", "Claude Code, on your phone")
 
 	cfg, client, how, err := connectFeishu()
@@ -86,9 +89,41 @@ func runInit() error {
 	if err := registerChannel(); err != nil {
 		return err
 	}
-	checkReturnPath(how)
+	if checkReturnPath(how) {
+		// Only worth asking for a tap once a message has got through. A
+		// return path that is down takes the card callback with it, and
+		// two failures for one cause is two things for the user to chase.
+		checkCardCallback(how)
+	}
 	explainLaunch()
 	return nil
+}
+
+// restoreOnSignal gives the terminal back if setup is killed rather than
+// finished, and returns the function that stops watching for that.
+//
+// Raw mode is a property of the terminal, not of this process: a setup that
+// dies without restoring it leaves the user at a shell with no echo and no
+// line editing, in which the obvious fix - type something - is exactly what
+// they cannot do. ctrl+c is handled without a signal at all, because raw
+// mode delivers it as a byte; this is for everything else that ends a
+// process politely, ctrl+break on Windows above all.
+func restoreOnSignal() func() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sig:
+			tui.Close()
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(sig)
+		close(done)
+	}
 }
 
 // connectFeishu gets Claude Companion a working Feishu app and the identity of the
@@ -224,7 +259,7 @@ func askBehavior(cfg *config.Config) error {
 	cfg.Notify = notify
 
 	remote, err := tui.Choose("Continue sessions from Feishu?",
-		"Pick one of the Claude Code sessions running here, send it a follow-up, or watch it work.",
+		"Pick one of the Claude Code sessions running here and send it a follow-up.",
 		[]tui.Choice[config.Switch]{
 			{Label: "Yes", Note: "reply from your phone", Value: config.On},
 			{Label: "No", Note: "notifications only", Value: config.Off},
@@ -351,9 +386,10 @@ func registerChannel() error {
 }
 
 // checkReturnPath proves Feishu can reach this machine while the user is
-// still here to fix it if it cannot. Sending is not evidence: the test card
-// already went out over a path that has nothing to do with this one.
-func checkReturnPath(how setupPath) {
+// still here to fix it if it cannot, and reports whether it does. Sending
+// is not evidence: the test card already went out over a path that has
+// nothing to do with this one.
+func checkReturnPath(how setupPath) bool {
 	tui.Blank()
 	tui.Step("Checking that Feishu can reach this computer")
 	tui.Blank()
@@ -363,28 +399,125 @@ func checkReturnPath(how setupPath) {
 	if err := daemon.EnsureCurrent(); err != nil {
 		tui.Fail("Could not start the Claude Companion daemon")
 		tui.Detail(err.Error())
-		return
+		return false
 	}
 	tui.Info("Send any message to the Claude Companion bot in Feishu now.")
-	tui.Detail(fmt.Sprintf("waiting up to %s", ipc.InboundProbeWait))
+	tui.Detail(fmt.Sprintf("waiting up to %s, or press ctrl+c to skip", ipc.InboundProbeWait))
 
-	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, ipc.InboundProbeWait+ipc.InboundProbeGrace)
+	env, err := awaitFromFeishu(ipc.TypeAwaitInbound, ipc.InboundProbeWait+ipc.InboundProbeGrace)
+	if errors.Is(err, tui.ErrAborted) {
+		tui.Warn("Skipped - Claude Companion never heard from Feishu")
+		tui.Detail("Notifications already work. Re-run " + tui.Code("claude-companion init") + " to check the return path.")
+		return false
+	}
 	if err != nil {
 		explainNoInbound(how, err)
-		return
+		return false
 	}
 	var proof ipc.InboundProof
 	if err := env.Into(&proof); err != nil {
 		explainNoInbound(how, err)
-		return
+		return false
 	}
 	switch {
 	case proof.OK:
 		tui.Done("Message received - Feishu can reach this computer")
+		return true
 	case proof.Stranger:
 		explainStranger(proof.Err)
 	default:
 		explainNoInbound(how, errors.New(proof.Err))
+	}
+	return false
+}
+
+// checkCardCallback proves that what the user taps and types on a card
+// gets back here.
+//
+// Card callbacks are a separate subscription in the Feishu console from
+// card delivery, and an app can send perfectly good cards while every
+// button and every reply box on them is inert. It fails by doing nothing
+// at all - so without this, the way a session is continued goes untested
+// until the day a message sent from a train never arrives.
+func checkCardCallback(how setupPath) {
+	tui.Blank()
+	tui.Step("Checking that a card can answer back")
+	tui.Blank()
+	tui.Info("Tap the button on the card Claude Companion just sent you.")
+	tui.Detail(fmt.Sprintf("waiting up to %s, or press ctrl+c to skip", ipc.CallbackProbeWait))
+
+	env, err := awaitFromFeishu(ipc.TypeAwaitCallback, ipc.CallbackProbeWait+ipc.CallbackProbeGrace)
+	if errors.Is(err, tui.ErrAborted) {
+		tui.Warn("Skipped - the tap was not checked")
+		tui.Detail("Re-run " + tui.Code("claude-companion init") + " to check it later.")
+		return
+	}
+	var proof ipc.CallbackProof
+	if err == nil {
+		err = env.Into(&proof)
+	}
+	switch {
+	case err != nil:
+		explainNoCallback(how, err)
+	case proof.OK:
+		tui.Done("Tap received - cards can be answered from Feishu")
+	default:
+		explainNoCallback(how, errors.New(proof.Err))
+	}
+}
+
+// explainNoCallback says what a card that cannot answer back costs, and
+// what is unaffected. It is deliberately specific about the second part:
+// everything else about Claude Companion works, and a user told only that
+// something failed would reasonably conclude that nothing works.
+func explainNoCallback(how setupPath, err error) {
+	tui.Warn("No tap reached Claude Companion")
+	tui.Detail(err.Error())
+	tui.Blank()
+	if how == pathScanned {
+		tui.Detail("The registration asked Feishu for this, so it is usually waiting on\n" +
+			"someone: the permissions may still need your administrator's approval,\n" +
+			"or the app may need releasing before the subscription takes effect.")
+	} else {
+		tui.Detail("In the Feishu developer console, add the callback\n" +
+			"  card.action.trigger\n" +
+			"to the app's event subscriptions.")
+	}
+	tui.Blank()
+	tui.Detail("Until then, the reply box on a card will do nothing when you use it,\n" +
+		"and so will the buttons. Notifications are unaffected, and a permission\n" +
+		"request can still be answered by typing the reply the card names.")
+	tui.Blank()
+	tui.Info("Re-run %s once that is fixed.", tui.Code("claude-companion init"))
+}
+
+// awaitFromFeishu waits for the daemon to report something arriving from
+// Feishu, and lets the user stop waiting.
+//
+// Minutes are a long time to sit in front of a terminal that is not
+// answering the keyboard, and these are the parts of setup waiting on
+// something the user may not be able to produce right now - an app their
+// administrator has not approved yet, a phone in another room. Without a
+// way out, ctrl+c does nothing here and killing the terminal is the only
+// thing left to try.
+func awaitFromFeishu(request string, timeout time.Duration) (ipc.Envelope, error) {
+	type result struct {
+		env ipc.Envelope
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		env, err := ipc.Request(request, nil, timeout)
+		done <- result{env, err}
+	}()
+	select {
+	case r := <-done:
+		return r.env, r.err
+	case <-tui.Quit():
+		// The daemon is left holding a probe that will time out on its
+		// own. Nothing waits on it, and it costs one goroutine there for
+		// as long as the wait had left to run.
+		return ipc.Envelope{}, tui.ErrAborted
 	}
 }
 

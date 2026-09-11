@@ -134,9 +134,9 @@ func main() {
 		}},
 		{"session/notify-only", func() (string, error) { return notify.SessionCard(notifyOnly, t, view) }},
 		{"session/interrupted", func() (string, error) { return notify.InterruptedSessionCard(sess(session.Idle), t) }},
-		{"session/settled-ok", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), t, "") }},
-		{"session/settled-failed", func() (string, error) { return notify.SettledWatchCard(sess(session.Idle), failed, "") }},
-		{"session/no-longer-live", func() (string, error) { return notify.WatchStoppedCard(sess(session.Working), t, "") }},
+		{"session/settled-ok", func() (string, error) { return notify.SettledSessionCard(sess(session.Idle), t, "") }},
+		{"session/settled-failed", func() (string, error) { return notify.SettledSessionCard(sess(session.Idle), failed, "") }},
+		{"session/no-longer-live", func() (string, error) { return notify.PausedSessionCard(sess(session.Working), t, "") }},
 		{"permission/asked-by-hook", func() (string, error) {
 			return notify.PermissionCard(payload(hook.EventPreToolUse), t, notify.Options{})
 		}},
@@ -149,10 +149,12 @@ func main() {
 		}},
 		{"session/progress", func() (string, error) { return notify.ProgressCard(payload(hook.EventStop), t, notify.Options{}) }},
 		{"question/answered", func() (string, error) { return notify.QuestionAnsweredCard(sess(session.Idle)) }},
-		{"reply/sessions", func() (string, error) {
-			return notify.OverviewCard([]session.Session{sess(session.Working), notifyOnly})
+		{"setup/callback-probe", notify.CallbackProbeCard},
+		{"session/resting", func() (string, error) { return notify.RestingSessionCard(sess(session.Idle), t) }},
+		{"session/resting-empty", func() (string, error) {
+			return notify.RestingSessionCard(sess(session.Idle), &transcript.Turn{})
 		}},
-		{"reply/selected", func() (string, error) { return notify.SelectedCard(sess(session.Working)) }},
+		{"session/resting-notify-only", func() (string, error) { return notify.RestingSessionCard(notifyOnly, t) }},
 		{"permission/asked-relayed", func() (string, error) { return notify.PermissionRelayCard(sess(session.Waiting), req) }},
 		{"permission/answered", func() (string, error) {
 			return notify.PermissionAnsweredCard(sess(session.Working), req, notify.VerdictAllow)

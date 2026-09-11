@@ -91,7 +91,7 @@ messages while Claude Code Channels remain in preview.
 | Session discovery | Choose the exact running session from Feishu/Lark. | ✅ |
 | Notifications | Hear only when Claude needs you or finishes. | ✅ |
 | Remote continuation | Send follow-ups into the selected existing session. | ✅ Preview |
-| Live watch | Follow progress in one card that updates in place. | ✅ |
+| Live session card | One card per session, updating in place while a turn runs. | ✅ |
 | Remote interrupt | Stop the current turn without ending the session. | ✅ macOS/Linux |
 | Permission decisions | Approve or deny requests from Feishu/Lark. | ✅ Optional |
 | QR onboarding | Scan once to connect the app and your machine. | ✅ |
@@ -103,11 +103,17 @@ messages while Claude Code Channels remain in preview.
 
 - **Quiet by default.** Feishu surfaces questions, permission requests, and
   completion summaries—not every file read, command, or tool call.
-- **Exact-session control.** Send `sessions`, choose a running session, and
-  every follow-up goes only there. Ended sessions are never silently replaced.
-- **One live card.** Send `watch` to follow progress in place. Tap
-  **Interrupt**, or send `interrupt`, to stop the current turn without ending
-  the session.
+- **One card per session.** A card opens by itself when a turn starts real
+  work and keeps itself current until the turn settles into its outcome.
+  There is nothing to switch on and nothing to turn off.
+- **Exact-session control.** Reply in a card's box and the message goes to
+  that session and no other. Typed in the chat instead, it goes to the one
+  session that can take it, or nowhere — never to a session you did not
+  mean. Send `sessions` to bring every card back to the bottom of the chat.
+- **Honest about what it cannot do.** A session started without the
+  Companion channel gets no reply box, and the card says so in a sentence.
+- **Interrupt.** Tap **Interrupt**, or send `interrupt`, to stop the current
+  turn without ending the session.
 
 ## How it works and security
 
@@ -137,9 +143,7 @@ design rationale.
 - The computer, Claude Code session, Claude Code Feishu Companion daemon, and
   network connection must remain running for remote continuation.
 - WSL and native Windows are separate installations, each needing its own
-  binary and `init`. Remote interrupt is not available on Windows, and remote
-  status remains untested until the first message confirms a session's
-  Channel.
+  binary and `init`. Remote interrupt is not available on Windows.
 
 ## Contributing
 
@@ -152,3 +156,6 @@ mise exec -- go build -o claude-companion .
 The repository pins its Go toolchain with [mise](https://mise.jdx.dev/). Setup
 and diagnostic commands are documented in [Setup and configuration](docs/setup.md)
 and [Security and operations](docs/security-and-operations.md).
+
+What the tests cannot reach - a real Feishu account, a phone, a real install -
+is covered by the [manual test plan](docs/manual-test-plan.md).

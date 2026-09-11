@@ -46,3 +46,27 @@ func TestSplitFrameIgnoresTheTrailingNewline(t *testing.T) {
 		}
 	}
 }
+
+// Ctrl+c has to reach the waits between the questions, not only the
+// questions. Setup sends a card, registers hooks and then waits two
+// minutes for Feishu to reach back; with the terminal in raw mode there is
+// no signal to interrupt any of them, and the keystroke that would is a
+// byte nobody is reading.
+func TestCtrlCReleasesAWaitWithNoQuestion(t *testing.T) {
+	in := &input{keys: make(chan key, 16), quit: make(chan struct{})}
+
+	select {
+	case <-in.quit:
+		t.Fatal("the wait was released before anything was pressed")
+	default:
+	}
+
+	in.abort()
+	in.abort() // a second ctrl+c must not close a closed channel
+
+	select {
+	case <-in.quit:
+	default:
+		t.Error("ctrl+c did not release the wait")
+	}
+}

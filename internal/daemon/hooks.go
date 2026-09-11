@@ -8,6 +8,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/deliver"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/hook"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/state"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
@@ -64,10 +65,10 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 	var stranded, awaited bool
 	switch p.HookEventName {
 	case hook.EventSessionEnd:
-		// The session is over: it must leave the overview, it must not
-		// stay selected as somewhere a message could still be sent, and
-		// nothing may be left claiming to watch it.
-		d.closeWatch(ctx, s.ID, "This session has ended.")
+		// The session is over: nothing may go on offering it as somewhere
+		// a message could be sent, and nothing may be left claiming to
+		// follow it.
+		d.settleLiveCard(ctx, s.ID, "This session has ended.")
 		d.reg.Remove(s.ID)
 		return
 	case hook.EventStop, hook.EventStopFailure:
@@ -92,6 +93,7 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 		Payload:         p,
 		Sender:          d.out,
 		ContinueSession: continueTarget(s),
+		Reach:           notify.ReachNote(s),
 		Skip:            d.skipEvent(s.ID),
 		Awaited:         awaited,
 		Sent: func(hookEvent, messageID string) {
@@ -116,10 +118,10 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 // Feishu refuses the recall. The outcome then settles that card in place,
 // exactly as it used to, and the push has to be found elsewhere.
 func (d *Daemon) recallLiveCard(ctx context.Context, sessionID string) (stranded bool) {
-	w := d.endWatch(sessionID)
+	w := d.detachLiveCard(sessionID)
 
 	// The turn's live card is whichever message holds the live slot: the
-	// watch's own card, or the progress card the watch took over.
+	// live card's own message, or the progress card it took over.
 	claimed := false
 	store, err := state.Open()
 	if err != nil {
@@ -140,9 +142,9 @@ func (d *Daemon) recallLiveCard(ctx context.Context, sessionID string) (stranded
 		debuglog.Printf("state: %v", err)
 	}
 	if !claimed && w != nil && w.messageID != "" {
-		// This watch never got the live slot, so the outcome will not
-		// settle its card. It has to leave on its own, and a card the
-		// outcome will not settle is not one it can be stranded on.
+		// This card never got the live slot, so the outcome will not
+		// settle it. It has to leave on its own, and a card the outcome
+		// will not settle is not one it can be stranded on.
 		d.deleteCard(ctx, w.messageID)
 	}
 	return stranded
@@ -176,16 +178,16 @@ func continueTarget(s session.Session) string {
 }
 
 // skipEvent vetoes an event the daemon is already reporting better itself:
-// a decision it is showing with real buttons, or a turn the user is
-// watching live. Either way the rule is one thing, one card - whatever is
+// a decision it is showing with real buttons, or a turn that already has a
+// live card. Either way the rule is one thing, one card - whatever is
 // already in front of the user wins, and the other stays quiet.
 func (d *Daemon) skipEvent(sessionID string) func(string) bool {
 	return func(hookEvent string) bool {
 		switch hookEvent {
 		case hook.EventPostToolUse:
-			// The live view is already this turn's one card, and far more
+			// The live card is already this turn's one card, and far more
 			// current than a progress refresh would be.
-			return d.watching(sessionID)
+			return d.cardStanding(sessionID)
 		case hook.EventPermissionRequest:
 			d.mu.Lock()
 			defer d.mu.Unlock()

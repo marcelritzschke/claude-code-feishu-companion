@@ -39,6 +39,9 @@ const (
 	// TypeAwaitInbound waits for the next Feishu message to arrive, so
 	// setup can prove the return path works. Tooling -> daemon.
 	TypeAwaitInbound = "await_inbound"
+	// TypeAwaitCallback puts a card with a button up and waits for the tap,
+	// so setup can prove that a card can answer back. Tooling -> daemon.
+	TypeAwaitCallback = "await_callback"
 )
 
 // Register introduces the Claude Code session a channel is attached to.
@@ -92,9 +95,9 @@ type Ack struct {
 	Err string `json:"err,omitempty"`
 }
 
-// Status answers TypeStatus. It is an Ack with the one thing a caller
+// Status answers TypeStatus. It is an Ack with the two things a caller
 // cannot see from outside: which configuration the running daemon is
-// actually holding.
+// holding, and which build of the program is holding it.
 type Status struct {
 	OK bool `json:"ok"`
 	// ConfigStamp is the modification time of the config file the daemon
@@ -102,7 +105,28 @@ type Status struct {
 	// is running credentials the user has since replaced, and answers for
 	// a Feishu app they may no longer be talking to.
 	ConfigStamp time.Time `json:"config_stamp,omitempty"`
+	// Build identifies the program image the daemon is running, from
+	// buildid. A daemon whose build differs from the one installed is
+	// serving code the user has already replaced, and says so nowhere else:
+	// the binary on disk is new, the version command reports the new build,
+	// and the behaviour is the old one.
+	Build string `json:"build,omitempty"`
 }
+
+// CallbackProof answers TypeAwaitCallback: whether the tap got back here.
+type CallbackProof struct {
+	OK  bool   `json:"ok"`
+	Err string `json:"err,omitempty"`
+}
+
+// CallbackProbeWait is how long a daemon waits for the tap. It is shorter
+// than the inbound wait because the card is already on the screen of the
+// person being asked: this is a tap, not an errand.
+const CallbackProbeWait = 90 * time.Second
+
+// CallbackProbeGrace is what a caller adds to CallbackProbeWait, for the
+// same reason as InboundProbeGrace.
+const CallbackProbeGrace = 15 * time.Second
 
 // InboundProbeWait is how long a daemon holds a TypeAwaitInbound request
 // open before answering that nothing came. It is part of the protocol

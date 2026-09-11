@@ -37,28 +37,21 @@ func TestParseVerdict(t *testing.T) {
 	}
 }
 
-func TestParsePick(t *testing.T) {
-	cases := []struct {
-		text   string
-		listed int
-		index  int
-		ok     bool
-	}{
-		{"1", 3, 0, true},
-		{"3", 3, 2, true},
-		{"2.", 3, 1, true},
-		{"4", 3, 0, false}, // past the end of what was offered
-		{"0", 3, 0, false},
-		{"1", 0, 0, false}, // nothing was offered
-		{"payments-api", 3, 0, false},
-		{"1 also check the tests", 3, 0, false}, // an instruction, not a choice
+// interrupt is a command only when it is the whole message: "interrupt the
+// build if it hangs" is an instruction for Claude.
+func TestParseInterrupt(t *testing.T) {
+	for _, text := range []string{"interrupt", "/interrupt", " Interrupt ", "INTERRUPT"} {
+		if !parseInterrupt(text) {
+			t.Errorf("parseInterrupt(%q) = false, want a command", text)
+		}
 	}
-	for _, tc := range cases {
-		t.Run(tc.text, func(t *testing.T) {
-			index, ok := parsePick(tc.text, tc.listed)
-			if ok != tc.ok || (ok && index != tc.index) {
-				t.Errorf("parsePick(%q, %d) = %d, %v; want %d, %v", tc.text, tc.listed, index, ok, tc.index, tc.ok)
-			}
-		})
+	for _, text := range []string{
+		"interrupt the build if it hangs",
+		"can you interrupt",
+		"interrupt 2", // numbers named sessions in a list that no longer exists
+	} {
+		if parseInterrupt(text) {
+			t.Errorf("parseInterrupt(%q) = true, want it left for Claude", text)
+		}
 	}
 }

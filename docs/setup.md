@@ -88,6 +88,8 @@ choose notification and remote-control settings
     ↓
 receive a test card
     ↓
+message the bot, then tap a card button
+    ↓
 done
 ```
 
@@ -96,9 +98,16 @@ and subscriptions pre-filled. The account that scans becomes the owner for
 this Claude Companion installation: the account Claude Companion messages
 and accepts messages from.
 
-After approval, `init` registers the Claude Code hooks and channel, starts the
-local daemon, sends a test card, and verifies that Feishu can reach the local
-bridge.
+After approval, `init` registers the Claude Code hooks and channel, starts
+the local daemon, and then proves the connection in both directions: it
+sends a test card, waits for a message you send the bot, and puts up a card
+with a button for you to tap.
+
+The tap is a separate check because card delivery and card callbacks are
+separate subscriptions on a Feishu app. Cards can arrive perfectly while
+every button and reply box on them is inert, and that failure is silent -
+so setup finds it while you are still at the keyboard rather than the day a
+message you sent from a train does not arrive.
 
 ## Existing or administrator-managed Feishu app
 
@@ -159,18 +168,45 @@ claude --dangerously-load-development-channels server:claude-companion
 ```
 
 A session started with plain `claude` is still discovered and sends
-notifications, but it appears in Feishu as **Notifications only**.
+notifications, but it cannot be answered from Feishu. Its cards say so and
+carry no reply box, so there is no way to type a message that would vanish.
 
-## Watching a session
+## The session card
 
-Watching needs no setup and no configuration of its own. Open a session from
-the Feishu overview and tap **Watch**, or reply `watch` for the selected
-session or `watch 2` for the second one listed. One card then updates in place
-with what Claude is broadly doing until the turn finishes, at which point it
-settles into the usual completion or failure card.
+Every session gets one card, and it opens by itself: the first real work in
+a turn puts it up, it updates in place with what Claude is broadly doing,
+and it settles into the usual completion or failure card when the turn ends.
+There is nothing to switch on, nothing to turn off, and no way to end up
+with two cards for one turn.
 
-Reply `stop watching` (or tap **Stop watching**) to close it early. A watch
-also ends on its own when the turn ends, when the session ends, and after two
-hours. Watching only reads what the session's hooks already report, so a
-**Notifications only** session can be watched even though it cannot be
-continued.
+A card also settles on its own when its session ends, when the daemon stops,
+and after two hours - a card is a check-in, not a subscription.
+
+Reply `sessions` to bring every session's card back to the bottom of the
+conversation: a card standing further up is recalled and posted again, one
+per session, with whatever needs you first. A session with nothing running
+gets a card showing what its last turn came to.
+
+## Where a message goes
+
+The reply box on a card is the address: what you type there reaches the
+session that card names and no other. It is the way to answer that cannot
+be wrong, because the session is on the screen while you choose it.
+
+A message typed in the conversation instead, with no card in front of you,
+goes to the session it can only have meant:
+
+- one session that can be continued - it goes there, and the answer names
+  it;
+- more than one - it stays put, and Claude Companion says to answer on the
+  card of the one you mean;
+- none - it stays put, and Claude Companion says why.
+
+There is no selecting, no numbering, and no remembering which session you
+are talking to. Whether there is one session is a fact about your computer
+rather than a mode you are in.
+
+Two things are still typed, because neither needs a session named for it:
+`interrupt` stops the one turn that is running, and `y <id>` / `n <id>`
+answers a permission request - the id is printed on the card that asks, so
+the answer carries its own address.

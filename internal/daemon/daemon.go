@@ -17,11 +17,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/buildid"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/update"
 )
@@ -46,17 +48,20 @@ type Daemon struct {
 	// awaiting holds messages pushed into a session that have not yet
 	// proved they arrived.
 	awaiting map[string]*delivery
-	// lastOverview is the sessions the last overview offered, in the order
-	// it numbered them, so a typed "2" means the second one the user saw.
-	lastOverview []string
-	// watches are the sessions the user asked to see live, by session id.
-	watches map[string]*watch
-	// pace is how often a watch looks and how often it may rewrite its
+	// live are the session cards standing in the conversation, by session
+	// id. One session gets one card, and that card is where its turn is
+	// reported until the turn ends.
+	live map[string]*liveCard
+	// pace is how often a live card looks and how often it may rewrite its
 	// card. Set once at construction and read-only thereafter.
 	pace pace
 	// interrupt delivers a turn interrupt to a session. It is a field so
 	// tests can interrupt without signalling a real process.
 	interrupt func(session.Session) error
+	// replaced reports that this daemon is no longer the program installed
+	// where it came from. A field so a test can say so without replacing
+	// the binary it is running inside.
+	replaced func() bool
 
 	// version is the running binary's own version, "dev" if unlinked. It
 	// is what checkForUpdate compares GitHub's latest release against.
@@ -68,6 +73,9 @@ type Daemon struct {
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
 	inboundWaiters []chan inboundProof
+	// callbackWaiters are one-shot callers watching for proof that a card
+	// can answer back. Setup uses it; nothing else does.
+	callbackWaiters []chan struct{}
 
 	// configStamp is when the config file this daemon read was last
 	// written. It is reported on status so that a caller holding a newer
@@ -210,9 +218,10 @@ func New(cfg *config.Config, out sender, in inbound, version string) *Daemon {
 		byRequest:    map[string]*prompt{},
 		bySession:    map[string]*prompt{},
 		awaiting:     map[string]*delivery{},
-		watches:      map[string]*watch{},
+		live:         map[string]*liveCard{},
 		pace:         defaultPace,
 		interrupt:    func(s session.Session) error { return s.Interrupt() },
+		replaced:     buildid.Replaced,
 		version:      version,
 		fetchRelease: update.Fetch,
 		stop:         make(chan struct{}),
@@ -258,9 +267,9 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	wg.Wait()
 	// The live cards go last and on a context of their own: the one thing
 	// a stopping daemon still owes the user is that nothing it left on
-	// their phone claims to be watching something.
+	// their phone claims to be following something.
 	shutdown, done := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
-	d.closeAllWatches(shutdown)
+	d.settleAllLiveCards(shutdown)
 	done()
 	if err := d.reg.Save(); err != nil {
 		debuglog.Printf("save sessions: %v", err)
@@ -344,15 +353,18 @@ func (d *Daemon) serve(ctx context.Context, conn *ipc.Conn) {
 		d.halt()
 	case ipc.TypeAwaitInbound:
 		d.serveAwaitInbound(ctx, conn)
+	case ipc.TypeAwaitCallback:
+		d.serveAwaitCallback(ctx, conn)
 	default:
 		d.reply(conn, ipc.Ack{Err: "unknown request " + env.Type})
 	}
 }
 
-// replyStatus says that this daemon is answering, and which configuration
-// it is answering with.
+// replyStatus says that this daemon is answering, which configuration it
+// is answering with, and which build of the program is answering at all.
 func (d *Daemon) replyStatus(conn *ipc.Conn) {
-	if err := conn.Write(ipc.TypeAck, ipc.Status{OK: true, ConfigStamp: d.configStamp}); err != nil {
+	st := ipc.Status{OK: true, ConfigStamp: d.configStamp, Build: buildid.Stamp()}
+	if err := conn.Write(ipc.TypeAck, st); err != nil {
 		debuglog.Printf("reply: %v", err)
 	}
 }
@@ -382,10 +394,33 @@ func (d *Daemon) housekeep(ctx context.Context) {
 			if err := d.reg.Save(); err != nil {
 				debuglog.Printf("save sessions: %v", err)
 			}
+			d.retireIfReplaced()
 		case <-deliveries.C:
 			d.expireDeliveries(ctx)
 		}
 	}
+}
+
+// retireIfReplaced ends this daemon once it is no longer the program
+// installed where it came from.
+//
+// Nobody else can do this. An install stops the daemon before replacing
+// the file, but a hook firing in that window starts a fresh one from the
+// old file and the install then replaces it underneath - and no hook or
+// channel afterwards has any reason to doubt the daemon answering them.
+// So the daemon checks itself, on the beat it already keeps.
+//
+// It stops rather than restarting itself: everything that needs a daemon
+// starts one when none answers, which for a machine with a Claude Code
+// session open is the next hook or the channel's next reconnect, seconds
+// away. A machine with none has nothing to notify about and nothing to
+// continue.
+func (d *Daemon) retireIfReplaced() {
+	if !d.replaced() {
+		return
+	}
+	debuglog.Printf("this daemon is an older build than the one installed; stopping so a current one can take over")
+	d.halt()
 }
 
 // serveAwaitInbound answers once something reaches this machine from
@@ -428,6 +463,68 @@ func strangerReason(from, want string) string {
 func (d *Daemon) replyProof(conn *ipc.Conn, proof ipc.InboundProof) {
 	if err := conn.Write(ipc.TypeAck, proof); err != nil {
 		debuglog.Printf("reply: %v", err)
+	}
+}
+
+// serveAwaitCallback puts a card with a button in front of the user and
+// answers once they tap it.
+//
+// It is the other half of the return-path check. A message proves Feishu
+// can reach this computer; only a tap proves a card can, and those are two
+// separate subscriptions on the Feishu app. The card is taken down either
+// way: a probe left in the conversation would be one more thing the user
+// has to work out the meaning of.
+func (d *Daemon) serveAwaitCallback(ctx context.Context, conn *ipc.Conn) {
+	if d.in == nil {
+		d.replyCallback(conn, ipc.CallbackProof{Err: "remote continuation is switched off"})
+		return
+	}
+	probe, err := notify.CallbackProbeCard()
+	if err != nil {
+		d.replyCallback(conn, ipc.CallbackProof{Err: err.Error()})
+		return
+	}
+	// The waiter is registered before the card goes up, so a tap that
+	// arrives while the send is still returning has somewhere to land.
+	waiter := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.callbackWaiters = append(d.callbackWaiters, waiter)
+	d.mu.Unlock()
+
+	messageID := d.sendCard(ctx, probe, nil)
+	if messageID == "" {
+		d.replyCallback(conn, ipc.CallbackProof{Err: "the probe card could not be sent"})
+		return
+	}
+	defer d.deleteCard(context.WithoutCancel(ctx), messageID)
+
+	select {
+	case <-waiter:
+		d.replyCallback(conn, ipc.CallbackProof{OK: true})
+	case <-ctx.Done():
+		d.replyCallback(conn, ipc.CallbackProof{Err: "the daemon stopped"})
+	case <-time.After(ipc.CallbackProbeWait):
+		d.replyCallback(conn, ipc.CallbackProof{Err: "no tap reached this computer"})
+	}
+}
+
+func (d *Daemon) replyCallback(conn *ipc.Conn, proof ipc.CallbackProof) {
+	if err := conn.Write(ipc.TypeAck, proof); err != nil {
+		debuglog.Printf("reply: %v", err)
+	}
+}
+
+// notifyCallbackWaiters reports that a tap got back here.
+func (d *Daemon) notifyCallbackWaiters() {
+	d.mu.Lock()
+	waiters := d.callbackWaiters
+	d.callbackWaiters = nil
+	d.mu.Unlock()
+	for _, w := range waiters {
+		select {
+		case w <- struct{}{}:
+		default:
+		}
 	}
 }
 

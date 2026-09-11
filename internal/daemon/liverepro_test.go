@@ -125,7 +125,6 @@ func TestLiveInjectionReachesARealSession(t *testing.T) {
 	if trace, err := os.ReadFile(filepath.Join(dir, "debug.log")); err == nil {
 		t.Logf("companion trace:\n%s", trace)
 	}
-	selectSession(t, d, id)
 	d.onMessage(ctx, feishu.Message{Text: "Reply with exactly the single word PONGLIVE and nothing else. Do not use any tools."})
 	t.Logf("daemon said: %v", rec.texts)
 

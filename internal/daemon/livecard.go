@@ -17,12 +17,17 @@ import (
 // The session card is the one thing in Claude Companion that looks at a
 // session continuously, so its whole design is about not becoming a stream.
 //
+// There is no asking for it and no turning it off. A card opens on the
+// first real sign of work in a turn, keeps itself current, and settles
+// when the turn ends - which leaves nothing for the user to manage, and
+// no state they have to remember being in.
+//
 // The transcript is polled rather than pushed: the card then needs no extra
 // hook, no extra setup, and no change to a running session. Reading a local
 // file every few seconds costs nothing; what has to be rationed is Feishu,
 // so the card is only rewritten when what it says actually changes.
 
-// pace is how often a watch looks, and how often it may speak.
+// pace is how often a live card looks, and how often it may speak.
 type pace struct {
 	// tick is how often the transcript is re-read.
 	tick time.Duration
@@ -38,7 +43,7 @@ type pace struct {
 	max time.Duration
 }
 
-// defaultPace is the cadence every watch runs at. A daemon carries its own
+// defaultPace is the cadence every live card runs at. A daemon carries its own
 // copy so a test can run the same loop in a fraction of the time.
 var defaultPace = pace{
 	tick:      3 * time.Second,
@@ -47,15 +52,15 @@ var defaultPace = pace{
 	max:       2 * time.Hour,
 }
 
-// watch is one session's live card: the single message that answers for
+// liveCard is one session's live card: the single message that answers for
 // the session until its turn ends.
-type watch struct {
+type liveCard struct {
 	sessionID string
 	messageID string
 	started   time.Time
 	cancel    context.CancelFunc
 
-	// mu orders a refresh against whatever ends the watch. It is held
+	// mu orders a refresh against whatever ends the card. It is held
 	// across the Feishu call on purpose: without that, a refresh already
 	// in flight could land after the final card and leave the user looking
 	// at a session that is still working long after it stopped.
@@ -67,10 +72,10 @@ type watch struct {
 	changed time.Time
 	// sent is when the card was last rewritten.
 	sent time.Time
-	// last is the session as the watch last saw it, so a card can still be
+	// last is the session as the card last saw it, so it can still be
 	// addressed to it after the session is gone from the registry.
 	last session.Session
-	// cached is the turn as of seen, so a watch that looks every few
+	// cached is the turn as of seen, so a card that looks every few
 	// seconds does not re-parse a transcript that has not moved.
 	cached *transcript.Turn
 	seen   stamp
@@ -95,7 +100,7 @@ type stamp struct {
 
 // turn returns the session's current turn, re-reading the transcript only
 // when the file has actually grown. Callers must hold w.mu.
-func (w *watch) turn(path string) *transcript.Turn {
+func (w *liveCard) turn(path string) *transcript.Turn {
 	fi, err := os.Stat(path)
 	fresh := err == nil && w.cached != nil && fi.Size() == w.seen.size && fi.ModTime().Equal(w.seen.mod)
 	if fresh {
@@ -114,19 +119,19 @@ func (w *watch) turn(path string) *transcript.Turn {
 // between ticks, and the turn's end settles it. Opening says nothing in
 // the conversation - the card itself is the message.
 func (d *Daemon) ensureSessionCard(ctx context.Context, s session.Session) {
-	if !s.Watchable() || s.State == session.Idle {
+	if !s.Observable() || s.State == session.Idle {
 		return
 	}
 	d.mu.Lock()
-	w, already := d.watches[s.ID]
+	w, already := d.live[s.ID]
 	d.mu.Unlock()
 	if already {
 		// A session that just started waiting must say so now, not on the
 		// next poll: force skips the pacing that quiets routine refreshes.
-		d.refreshWatch(ctx, w, s, s.State == session.Waiting)
+		d.refreshLiveCard(ctx, w, s, s.State == session.Waiting)
 		return
 	}
-	d.openWatch(ctx, s, adoption{})
+	d.openLiveCard(ctx, s, adoption{})
 }
 
 // adoption is how a live card starts on a message that already stands.
@@ -141,11 +146,11 @@ type adoption struct {
 	messageID string
 	// recall is another card that stood for this session and now describes
 	// a turn the user has started another one from. The card holding the
-	// live slot is found in the store; this is the one a watch was on when
+	// live slot is found in the store; this is the one a card was on when
 	// it never got that slot.
 	recall string
 	// sent is the message Claude has not taken up yet, if any: what the
-	// card shows until it has. See watch.pending.
+	// card shows until it has. See liveCard.pending.
 	sent string
 	// from is where in the transcript to look for that message.
 	from int64
@@ -160,7 +165,7 @@ type adoption struct {
 // exactly what this product does not do.
 func (d *Daemon) adoptSessionCard(ctx context.Context, sessionID, messageID, sent string) {
 	s, ok := d.reg.Get(sessionID)
-	if messageID == "" || !ok || !s.Watchable() {
+	if messageID == "" || !ok || !s.Observable() {
 		// Nothing to adopt, or nothing to show on it. The ordinary live
 		// card still opens on the turn's first sign of work.
 		d.ensureSessionCard(ctx, s)
@@ -169,63 +174,79 @@ func (d *Daemon) adoptSessionCard(ctx context.Context, sessionID, messageID, sen
 	take := adoption{messageID: messageID, sent: sent, from: d.pendingFrom(sessionID)}
 
 	d.mu.Lock()
-	w, running := d.watches[sessionID]
+	w, running := d.live[sessionID]
 	d.mu.Unlock()
 	if running && w.messageID == messageID {
 		w.mu.Lock()
 		w.pending, w.pendingFrom = take.sent, take.from
 		w.mu.Unlock()
-		d.refreshWatch(ctx, w, s, true)
+		d.refreshLiveCard(ctx, w, s, true)
 		return
 	}
 	if running {
 		// The user answered from a card other than the one this session's
-		// watch is standing on. Theirs is the one they are looking at.
-		if stale := d.endWatch(sessionID); stale != nil {
+		// card is standing on. Theirs is the one they are looking at.
+		if stale := d.detachLiveCard(sessionID); stale != nil {
 			take.recall = stale.messageID
 		}
 	}
-	d.openWatch(ctx, s, take)
+	d.openLiveCard(ctx, s, take)
 }
 
-// startWatch opens the live view of a session at the user's request: the
-// same card ensureSessionCard maintains, but answered out loud, because
-// this time the user asked and silence would read as failure.
-func (d *Daemon) startWatch(ctx context.Context, s session.Session) {
-	if !s.Watchable() {
-		d.say(ctx, "Claude Companion cannot see inside "+s.Label()+" yet. It becomes watchable as soon as that session runs its next turn.")
+// repostSessionCard puts a session's one card back at the bottom of the
+// conversation, where the user just asked for it.
+//
+// Refreshing the card where it already stands would be silent - a message
+// rewritten in place notifies nobody and may be a long scroll up - and
+// silence in answer to a direct question reads as failure. So whatever
+// stands is recalled first and the card goes up again as a new message,
+// which keeps the rule that one session has one card while still putting
+// it where the user is looking.
+func (d *Daemon) repostSessionCard(ctx context.Context, s session.Session) {
+	d.recallLiveCard(ctx, s.ID)
+	if s.State == session.Idle || !s.Observable() {
+		d.sendRestingCard(ctx, s)
 		return
 	}
-
-	d.mu.Lock()
-	running, already := d.watches[s.ID]
-	d.mu.Unlock()
-	if already {
-		d.refreshWatch(ctx, running, s, true)
-		d.say(ctx, "Already watching "+s.Label()+".")
-		return
-	}
-
-	if s.State == session.Idle {
-		// Nothing is in flight, so there is no live view to open - only
-		// the outcome of what the session last did. Saying that now beats
-		// a card that would sit there claiming to be live.
-		turn := transcript.Load(s.Transcript, "")
-		card, err := notify.SettledWatchCard(s, turn, "Nothing is running in this session right now.")
-		d.sendCard(ctx, card, err)
-		debuglog.Printf("watch %s: nothing running; showed the last outcome", s.Describe())
-		return
-	}
-	d.openWatch(ctx, s, adoption{})
+	d.openLiveCard(ctx, s, adoption{})
 }
 
-// openWatch puts up a session's live card and starts the loop that keeps
-// it current. The watch is registered before the card is sent so two
+// sendRestingCard shows a session that has nothing in flight: what its last
+// turn came to, or that it has not run one yet.
+//
+// The card takes the live slot, so the session's next turn writes onto this
+// message rather than adding another one, and the turn's outcome recalls it
+// the way it recalls any live card.
+func (d *Daemon) sendRestingCard(ctx context.Context, s session.Session) {
+	card, err := notify.RestingSessionCard(s, transcript.Load(s.Transcript, ""))
+	if err != nil {
+		debuglog.Printf("build resting card: %v", err)
+		return
+	}
+	store, err := state.Open()
+	if err != nil {
+		debuglog.Printf("open state: %v", err)
+		d.sendCard(ctx, card, nil)
+		return
+	}
+	if err := store.Mutate(func(entries map[string]state.Entry) {
+		id := d.sendCard(ctx, card, nil)
+		if id == "" {
+			return
+		}
+		entries[s.ID] = state.Entry{MessageID: id, UpdatedAt: time.Now()}
+	}); err != nil {
+		debuglog.Printf("state: %v", err)
+	}
+}
+
+// openLiveCard puts up a session's live card and starts the loop that keeps
+// it current. The card is registered before it is sent so two
 // concurrent hook events cannot both open one. take, when it names a
 // message, is a card already standing that this one is written onto.
-func (d *Daemon) openWatch(ctx context.Context, s session.Session, take adoption) {
+func (d *Daemon) openLiveCard(ctx context.Context, s session.Session, take adoption) {
 	now := time.Now()
-	w := &watch{
+	w := &liveCard{
 		sessionID:   s.ID,
 		started:     now,
 		changed:     now,
@@ -235,11 +256,11 @@ func (d *Daemon) openWatch(ctx context.Context, s session.Session, take adoption
 		pendingFrom: take.from,
 	}
 	d.mu.Lock()
-	if _, raced := d.watches[s.ID]; raced {
+	if _, raced := d.live[s.ID]; raced {
 		d.mu.Unlock()
 		return // another event opened this session's card first
 	}
-	d.watches[s.ID] = w
+	d.live[s.ID] = w
 	d.mu.Unlock()
 
 	turn := transcript.Load(s.Transcript, "")
@@ -249,31 +270,31 @@ func (d *Daemon) openWatch(ctx context.Context, s session.Session, take adoption
 	card, err := notify.SessionCard(s, turn, view)
 	if err != nil {
 		debuglog.Printf("build session card: %v", err)
-		d.dropWatch(w)
+		d.dropLiveCard(w)
 		return
 	}
-	// The claim happens under the watch's own lock so the message id is
-	// ordered against refreshes, and against whatever might end the watch
-	// while the card is still going up.
+	// The claim happens under the card's own lock so the message id is
+	// ordered against refreshes, and against whatever might end the card
+	// while it is still going up.
 	w.mu.Lock()
 	claimed := d.claimLiveCard(ctx, s.ID, card, w, take)
 	w.mu.Unlock()
 	if !claimed {
-		d.dropWatch(w)
+		d.dropLiveCard(w)
 		return
 	}
 
 	wctx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
-	go d.runWatch(wctx, w)
+	go d.runLiveCard(wctx, w)
 	debuglog.Printf("session card for %s standing as message %s", s.Describe(), w.messageID)
 }
 
-// dropWatch forgets a watch whose card never made it up.
-func (d *Daemon) dropWatch(w *watch) {
+// dropLiveCard forgets a live card that never made it up.
+func (d *Daemon) dropLiveCard(w *liveCard) {
 	d.mu.Lock()
-	if d.watches[w.sessionID] == w {
-		delete(d.watches, w.sessionID)
+	if d.live[w.sessionID] == w {
+		delete(d.live, w.sessionID)
 	}
 	d.mu.Unlock()
 }
@@ -291,7 +312,7 @@ func viewOf(s session.Session, activityAt time.Time, notes []string) notify.Sess
 // The proof is the same one a delivery is settled by: the message itself,
 // in the transcript, past where the file stood when it went. Nothing else
 // will do - a session busy with the previous turn writes lines all day.
-func (w *watch) takenUp(path string) bool {
+func (w *liveCard) takenUp(path string) bool {
 	if w.pending == "" {
 		return false
 	}
@@ -311,7 +332,7 @@ const maxCardNotes = 3
 // what was decided; the session card is where that record belongs.
 func (d *Daemon) noteOnSessionCard(ctx context.Context, sessionID, note string) {
 	d.mu.Lock()
-	w, ok := d.watches[sessionID]
+	w, ok := d.live[sessionID]
 	d.mu.Unlock()
 	if !ok {
 		return // no live card standing; the outcome ping still covers the turn
@@ -323,25 +344,25 @@ func (d *Daemon) noteOnSessionCard(ctx context.Context, sessionID, note string) 
 	}
 	w.mu.Unlock()
 	if s, live := d.reg.Get(sessionID); live {
-		d.refreshWatch(ctx, w, s, true)
+		d.refreshLiveCard(ctx, w, s, true)
 	}
 }
 
-// claimLiveCard puts the watch card up as the turn's one live card.
+// claimLiveCard puts the card up as the turn's one live card.
 //
-// When a progress card is already standing for this turn, the watch takes
-// that message over instead of adding a second live card - one turn stays
+// When a progress card is already standing for this turn, the live card
+// takes that message over instead of adding a second one - one turn stays
 // one message, and the completion notification settles whichever of the two
 // the user is actually looking at.
 //
 // An adoption is the other way in: the message it names is a card the user
 // is already looking at, and it takes the slot from whatever held it.
-func (d *Daemon) claimLiveCard(ctx context.Context, sessionID, cardJSON string, w *watch, take adoption) bool {
+func (d *Daemon) claimLiveCard(ctx context.Context, sessionID, cardJSON string, w *liveCard, take adoption) bool {
 	adopt := take.messageID
 	store, err := state.Open()
 	if err != nil {
 		// The card can still be shown; it just will not be settled by the
-		// turn's own completion notification. The watch settles it instead.
+		// turn's own completion notification. The live card settles it instead.
 		debuglog.Printf("open state: %v", err)
 		if adopt != "" {
 			d.updateCard(ctx, adopt, cardJSON, nil)
@@ -392,8 +413,8 @@ func (d *Daemon) recallOthers(ctx context.Context, keep string, others ...string
 	}
 }
 
-// releaseLiveCard gives up the turn's live-card slot, so a card the watch
-// has already put to rest is not rewritten again by the turn's completion.
+// releaseLiveCard gives up the turn's live-card slot, so a card already
+// put to rest is not rewritten again by the turn's completion.
 func (d *Daemon) releaseLiveCard(sessionID string) {
 	store, err := state.Open()
 	if err != nil {
@@ -406,8 +427,8 @@ func (d *Daemon) releaseLiveCard(sessionID string) {
 	}
 }
 
-// runWatch keeps one card current until there is nothing left to watch.
-func (d *Daemon) runWatch(ctx context.Context, w *watch) {
+// runLiveCard keeps one card current until there is nothing left to follow.
+func (d *Daemon) runLiveCard(ctx context.Context, w *liveCard) {
 	ticker := time.NewTicker(d.pace.tick)
 	defer ticker.Stop()
 	for {
@@ -430,21 +451,21 @@ func (d *Daemon) runWatch(ctx context.Context, w *watch) {
 		case s.State == session.Idle:
 			// The turn ended without a Stop event reaching Claude Companion.
 		case time.Since(w.started) > d.pace.max:
-			note = "This card stopped updating after two hours. Reply  watch  to look in again."
+			note = "This card stopped updating after two hours. Reply  sessions  to look in again."
 		default:
-			d.refreshWatch(ctx, w, s, false)
+			d.refreshLiveCard(ctx, w, s, false)
 			continue
 		}
-		// The last card is written on a context of its own: a watch that
-		// is ending must still be able to say that it ended.
-		d.closeWatch(context.WithoutCancel(ctx), w.sessionID, note)
+		// The last write happens on a context of its own: a card that is
+		// being put to rest must still be able to say so.
+		d.settleLiveCard(context.WithoutCancel(ctx), w.sessionID, note)
 		return
 	}
 }
 
-// refreshWatch rewrites the card when it has something new to say. force
-// rewrites it regardless, which is what re-opening an existing watch does.
-func (d *Daemon) refreshWatch(ctx context.Context, w *watch, s session.Session, force bool) {
+// refreshLiveCard rewrites the card when it has something new to say. force
+// rewrites it regardless, which is what re-posting an existing card does.
+func (d *Daemon) refreshLiveCard(ctx context.Context, w *liveCard, s session.Session, force bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.stopped || w.messageID == "" {
@@ -479,18 +500,18 @@ func (d *Daemon) refreshWatch(ctx context.Context, w *watch, s session.Session, 
 	w.signature, w.sent = signature, now
 }
 
-// endWatch stops watching a session and hands back the watch that was
-// running, leaving its card exactly as it stands.
+// detachLiveCard stops following a session and hands back the card that
+// was running, leaving the message exactly as it stands.
 //
 // That is what the end of a turn wants: the completion notification is
 // about to rewrite the very same message into the turn's outcome, which is
 // the settled state the live companion asks for and the attention card
 // already taught the user.
-func (d *Daemon) endWatch(sessionID string) *watch {
+func (d *Daemon) detachLiveCard(sessionID string) *liveCard {
 	d.mu.Lock()
-	w, ok := d.watches[sessionID]
+	w, ok := d.live[sessionID]
 	if ok {
-		delete(d.watches, sessionID)
+		delete(d.live, sessionID)
 	}
 	d.mu.Unlock()
 	if !ok {
@@ -500,19 +521,20 @@ func (d *Daemon) endWatch(sessionID string) *watch {
 		w.cancel()
 	}
 	// Taking the lock waits for a refresh already in flight, so nothing
-	// this watch writes can land after whatever the caller writes next.
+	// this card writes can land after whatever the caller writes next.
 	w.mu.Lock()
 	w.stopped = true
 	w.mu.Unlock()
-	debuglog.Printf("stopped watching session %s", sessionID)
+	debuglog.Printf("stopped following session %s", sessionID)
 	return w
 }
 
-// closeWatch stops watching and puts the card into a resting state of its
-// own: the outcome when the turn is over, an honest "still working" when it
-// is not. Either way there is no spinner left running.
-func (d *Daemon) closeWatch(ctx context.Context, sessionID, note string) {
-	w := d.endWatch(sessionID)
+// settleLiveCard stops following the session and puts the card into a
+// resting state of its own: the outcome when the turn is over, an honest
+// "still working" when it is not. Either way nothing is left claiming to
+// be live.
+func (d *Daemon) settleLiveCard(ctx context.Context, sessionID, note string) {
+	w := d.detachLiveCard(sessionID)
 	if w == nil || w.messageID == "" {
 		return
 	}
@@ -520,17 +542,17 @@ func (d *Daemon) closeWatch(ctx context.Context, sessionID, note string) {
 
 	s, live := d.reg.Get(sessionID)
 	if !live {
-		// The session is gone from the registry, so the watch's own last
-		// sighting is the only thing left that can name it on the card.
+		// The session is gone from the registry, so the card's own last
+		// sighting is the only thing left that can name it.
 		w.mu.Lock()
 		s = w.last
 		w.mu.Unlock()
 	}
 	turn := transcript.Load(s.Transcript, "")
 
-	card, err := notify.SettledWatchCard(s, turn, note)
+	card, err := notify.SettledSessionCard(s, turn, note)
 	if live && s.State != session.Idle {
-		card, err = notify.WatchStoppedCard(s, turn, note)
+		card, err = notify.PausedSessionCard(s, turn, note)
 	}
 	d.updateCard(ctx, w.messageID, card, err)
 }
@@ -542,7 +564,7 @@ func (d *Daemon) closeWatch(ctx context.Context, sessionID, note string) {
 // is looking at, and it is claiming their message is with Claude.
 func (d *Daemon) abandonPendingCard(ctx context.Context, sessionID, note string) {
 	d.mu.Lock()
-	w, ok := d.watches[sessionID]
+	w, ok := d.live[sessionID]
 	d.mu.Unlock()
 	if !ok {
 		return
@@ -551,31 +573,31 @@ func (d *Daemon) abandonPendingCard(ctx context.Context, sessionID, note string)
 	standing := w.pending != ""
 	w.mu.Unlock()
 	if standing {
-		d.closeWatch(ctx, sessionID, note)
+		d.settleLiveCard(ctx, sessionID, note)
 	}
 }
 
-// watching reports whether a session's live view is open, which is how the
-// attention-mode progress card knows to stand down: while the user is watching, the
-// live card is already the one card this turn gets.
-func (d *Daemon) watching(sessionID string) bool {
+// cardStanding reports whether a session has a live card up, which is how
+// the attention-mode progress card knows to stand down: the live card is
+// already the one card this turn gets, and a more current one.
+func (d *Daemon) cardStanding(sessionID string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	_, ok := d.watches[sessionID]
+	_, ok := d.live[sessionID]
 	return ok
 }
 
-// closeAllWatches puts every live card to rest as the daemon stops. A
+// settleAllLiveCards puts every live card to rest as the daemon stops. A
 // session card cannot survive the process that polls it, and a card left
 // saying "Working" would outlast the truth of it.
-func (d *Daemon) closeAllWatches(ctx context.Context) {
+func (d *Daemon) settleAllLiveCards(ctx context.Context) {
 	d.mu.Lock()
-	ids := make([]string, 0, len(d.watches))
-	for id := range d.watches {
+	ids := make([]string, 0, len(d.live))
+	for id := range d.live {
 		ids = append(ids, id)
 	}
 	d.mu.Unlock()
 	for _, id := range ids {
-		d.closeWatch(ctx, id, "Claude Companion stopped, so this card is no longer live.")
+		d.settleLiveCard(ctx, id, "Claude Companion stopped, so this card is no longer live.")
 	}
 }

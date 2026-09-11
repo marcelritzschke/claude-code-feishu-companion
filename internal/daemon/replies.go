@@ -2,18 +2,30 @@ package daemon
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
-// Everything a card button can do, a typed reply can do too.
+// What can be typed, and why these and not others.
 //
 // Card callbacks are a separate subscription in the Feishu console from
-// card delivery, and an app can send perfectly good cards while every
-// button on them is inert. Claude Companion cannot detect that, and a product whose
-// only way to pick a session is a button that silently does nothing is a
-// product that does nothing. So the buttons are a convenience and the
-// typed forms are the contract.
+// card delivery: an app can send perfectly good cards while every button
+// and every reply box on them is inert, and it fails by doing nothing at
+// all. That used to mean every card action needed a typed twin, including
+// a numbered way to pick a session out of a list.
+//
+// It cost more than it bought. The numbers needed a list to resolve
+// against, the list needed a remembered selection, and the selection was
+// state the user could not see - so a message went wherever the last
+// numbered reply had pointed, which was nowhere on their screen. The way
+// to know where a message is going is to have typed it into the card of
+// the session it names.
+//
+// What is left typed is what needs no list to make sense of: a verdict,
+// which carries the request it answers inside itself, and a command that
+// is about the machine rather than about one session. Setup now proves the
+// card path instead of routing around it - see checkCardCallback - so an
+// app whose callbacks are missing is found while the user is at the
+// keyboard rather than weeks later.
 
 // verdictReply matches an answer to a permission request: "y abcde",
 // "yes abcde", "n abcde", "no abcde".
@@ -36,67 +48,10 @@ func parseVerdict(text string) (requestID string, allow, ok bool) {
 	return strings.ToLower(m[2]), strings.HasPrefix(strings.ToLower(m[1]), "y"), true
 }
 
-// watchReply matches a request to look inside a session: "watch" on its
-// own for the selected one, or "watch 2" for the second session of the
-// last overview. The whole message has to be the command, exactly as with
-// the overview words: "watch the test output and tell me" is an
-// instruction for Claude, not a Claude Companion command.
-var watchReply = regexp.MustCompile(`(?i)^\s*/?watch\s*(\d*)\s*$`)
+// interruptReply matches a request to stop the running turn. As with every
+// command, the whole message has to be it: "interrupt the build if it
+// hangs" is an instruction for Claude, not a Claude Companion command.
+var interruptReply = regexp.MustCompile(`(?i)^\s*/?interrupt\s*$`)
 
-// stopWatchReply matches a request to stop looking.
-var stopWatchReply = regexp.MustCompile(`(?i)^\s*(?:/?unwatch|stop\s+watching)\s*$`)
-
-// interruptReply matches a request to stop a session's current turn:
-// "interrupt" on its own for the selected session, or "interrupt 2" for
-// the second session of the last overview. As with every command, the
-// whole message has to be it: "interrupt the build if it hangs" is an
-// instruction for Claude, not a Claude Companion command.
-var interruptReply = regexp.MustCompile(`(?i)^\s*/?interrupt\s*(\d*)\s*$`)
-
-// parseWatch reads a watch request, reporting the session number it names
-// (0 when it named none, meaning the selected session).
-func parseWatch(text string) (number int, ok bool) {
-	m := watchReply.FindStringSubmatch(text)
-	if m == nil {
-		return 0, false
-	}
-	if m[1] == "" {
-		return 0, true
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-// parseStopWatch reads a request to stop watching.
-func parseStopWatch(text string) bool { return stopWatchReply.MatchString(text) }
-
-// parseInterrupt reads an interrupt request, reporting the session number
-// it names (0 when it named none, meaning the selected session).
-func parseInterrupt(text string) (number int, ok bool) {
-	m := interruptReply.FindStringSubmatch(text)
-	if m == nil {
-		return 0, false
-	}
-	if m[1] == "" {
-		return 0, true
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-// parsePick reads a reply that picks the nth session from the last
-// overview. A bare number is never an instruction to Claude, which is what
-// makes it safe to read as a choice whatever else is going on.
-func parsePick(text string, listed int) (index int, ok bool) {
-	n, err := strconv.Atoi(strings.TrimSpace(strings.Trim(text, ".)")))
-	if err != nil || n < 1 || n > listed {
-		return 0, false
-	}
-	return n - 1, true
-}
+// parseInterrupt reads a request to stop the running turn.
+func parseInterrupt(text string) bool { return interruptReply.MatchString(text) }

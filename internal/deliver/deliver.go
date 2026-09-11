@@ -57,6 +57,9 @@ type Deliverer struct {
 	// ContinueSession, when set, puts a [ Continue ] button on this event's
 	// card pointing at that session.
 	ContinueSession string
+	// Reach, when set, is the sentence the card uses to explain a missing
+	// reply box, or one that may not be heard.
+	Reach string
 	// Skip vetoes an event the caller reports better itself - a permission
 	// prompt the daemon is relaying with real buttons, say. Without it the
 	// user would get two cards for one decision.
@@ -81,7 +84,7 @@ func (d *Deliverer) Event(turn *transcript.Turn, cfg *config.Config) {
 		debuglog.Printf("skip %s: reported another way", p.HookEventName)
 		return
 	}
-	opts := notify.Options{ContinueSession: d.ContinueSession}
+	opts := notify.Options{ContinueSession: d.ContinueSession, Reach: d.Reach}
 	switch p.HookEventName {
 	case hook.EventPermissionRequest:
 		card, err := notify.PermissionCard(p, turn, opts)

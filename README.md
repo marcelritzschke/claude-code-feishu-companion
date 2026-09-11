@@ -156,3 +156,6 @@ mise exec -- go build -o claude-companion .
 The repository pins its Go toolchain with [mise](https://mise.jdx.dev/). Setup
 and diagnostic commands are documented in [Setup and configuration](docs/setup.md)
 and [Security and operations](docs/security-and-operations.md).
+
+What the tests cannot reach - a real Feishu account, a phone, a real install -
+is covered by the [manual test plan](docs/manual-test-plan.md).

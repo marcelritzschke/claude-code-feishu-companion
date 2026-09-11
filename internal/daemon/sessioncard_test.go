@@ -20,15 +20,15 @@ import (
 // to ask to see that Claude is working.
 func TestWorkOpensTheSessionCardAutomatically(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
 		"tool_name":       "Read",
 	})
 
-	if !d.watching("sess-1") {
+	if !d.cardStanding("sess-1") {
 		t.Fatal("a working session should carry its own live card")
 	}
 	if titles := rec.titles(t); len(titles) != 1 || !strings.HasPrefix(titles[0], "🔵 Working") {
@@ -52,11 +52,11 @@ func TestWorkOpensTheSessionCardAutomatically(t *testing.T) {
 // which is what keeps the experience quiet by default.
 func TestAPromptAloneOpensNoSessionCard(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventUserPromptSubmit, map[string]any{"transcript_path": path})
 
-	if d.watching("sess-1") {
+	if d.cardStanding("sess-1") {
 		t.Error("a conversational turn must not open a card")
 	}
 	if len(rec.cards) != 0 {
@@ -67,8 +67,8 @@ func TestAPromptAloneOpensNoSessionCard(t *testing.T) {
 // A session that cannot be controlled must never offer control.
 func TestNotificationOnlySessionCardOffersNoControl(t *testing.T) {
 	d, rec, _ := fixture(t, session.Notifications)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -87,8 +87,8 @@ func TestNotificationOnlySessionCardOffersNoControl(t *testing.T) {
 // flips the standing session card to waiting immediately.
 func TestPermissionRequestTurnsTheSessionCardToWaiting(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -120,7 +120,7 @@ func TestPermissionRequestTurnsTheSessionCardToWaiting(t *testing.T) {
 // turn, and no second one saying the same thing.
 func TestFinishedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -151,7 +151,7 @@ func TestFinishedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 func TestOutcomeStrandedOnAnUnrecallableCardIsSaidOutLoud(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
 	rec.failDelete = true
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -178,7 +178,7 @@ func TestOutcomeStrandedOnAnUnrecallableCardIsSaidOutLoud(t *testing.T) {
 
 func TestFailedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -207,7 +207,7 @@ func TestFailedTurnReplacesTheLiveCardWithItsOutcome(t *testing.T) {
 // already notifies - a ping on top would be the same news twice.
 func TestCompletionWithoutASessionCardDoesNotPing(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventStop, map[string]any{
 		"transcript_path":        path,
@@ -229,7 +229,7 @@ func TestInterruptButtonStopsTheTurn(t *testing.T) {
 		t.Skip("interrupt is not offered on Windows: see interrupt_windows.go")
 	}
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	var interrupted []int
 	d.interrupt = func(s session.Session) error {
@@ -252,7 +252,7 @@ func TestInterruptButtonStopsTheTurn(t *testing.T) {
 	if len(interrupted) != 1 || interrupted[0] != 4242 {
 		t.Fatalf("interrupts = %v, want one to the session's process", interrupted)
 	}
-	if d.watching("sess-1") {
+	if d.cardStanding("sess-1") {
 		t.Error("the interrupted turn's card should be settled, not live")
 	}
 	s, ok := d.reg.Get("sess-1")
@@ -276,7 +276,7 @@ func TestInterruptFailureIsToldHonestly(t *testing.T) {
 		t.Skip("interrupt is not offered on Windows, so d.interrupt is never reached: see interrupt_windows.go")
 	}
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 	d.interrupt = func(session.Session) error { return errors.New("no such process") }
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
@@ -286,12 +286,12 @@ func TestInterruptFailureIsToldHonestly(t *testing.T) {
 
 	value, _ := json.Marshal(notify.Action{Kind: notify.ActionInterrupt, Session: "sess-1"})
 	d.onCardAction(context.Background(), feishu.CardAction{Value: value})
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "could not interrupt") {
 		t.Errorf("answer = %v", rec.texts)
 	}
-	if !d.watching("sess-1") {
+	if !d.cardStanding("sess-1") {
 		t.Error("a failed interrupt must leave the live card standing")
 	}
 }
@@ -303,7 +303,7 @@ func TestTypedInterruptReachesTheSelectedSession(t *testing.T) {
 		t.Skip("interrupt is not offered on Windows: see interrupt_windows.go")
 	}
 	d, _, _ := fixture(t, session.Ready)
-	watchable(t, d)
+	observable(t, d)
 	selectSession(t, d, "sess-1")
 	d.reg.MarkWorking("sess-1")
 
@@ -320,7 +320,7 @@ func TestTypedInterruptReachesTheSelectedSession(t *testing.T) {
 // "interrupt" is a Claude Companion command only when it is the whole message.
 func TestInterruptIsNotStolenFromAnInstruction(t *testing.T) {
 	d, _, l := fixture(t, session.Ready)
-	watchable(t, d)
+	observable(t, d)
 	selectSession(t, d, "sess-1")
 
 	var interrupted int
@@ -339,8 +339,8 @@ func TestInterruptIsNotStolenFromAnInstruction(t *testing.T) {
 // A question card must stop reading as actionable once the session moved on.
 func TestQuestionCardSettlesOnceAnswered(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPreToolUse, map[string]any{
 		"transcript_path": path,
@@ -388,8 +388,8 @@ func TestQuestionCardSettlesOnceAnswered(t *testing.T) {
 // recalled: it moves onto the session card as a one-line record.
 func TestVerdictIsRecordedOnTheSessionCard(t *testing.T) {
 	d, rec, l := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,
@@ -446,7 +446,7 @@ func answerNow(t *testing.T, path string) {
 // on a phone looking at an answer to the message before theirs.
 func TestFastAnswerToACardReplyStillReachesThePhone(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventStop, map[string]any{
 		"transcript_path":        path,
@@ -458,7 +458,7 @@ func TestFastAnswerToACardReplyStillReachesThePhone(t *testing.T) {
 	completed := rec.ids[0]
 
 	replyOn(t, d, completed, "lgtm")
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	// Claude takes the message and answers it without running anything.
 	answerNow(t, path)
@@ -480,7 +480,7 @@ func TestFastAnswerToACardReplyStillReachesThePhone(t *testing.T) {
 // keeps a conversational exchange off the phone is unchanged.
 func TestFastTurnNobodyAskedForStaysQuiet(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 	answerNow(t, path)
 
 	hookEvent(t, d, hook.EventStop, map[string]any{
@@ -497,7 +497,7 @@ func TestFastTurnNobodyAskedForStaysQuiet(t *testing.T) {
 // rewritten, so the card the user replied on becomes their message's card.
 func TestCardReplyRewritesTheCardItWasTypedInto(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventStop, map[string]any{
 		"transcript_path":        path,
@@ -506,7 +506,7 @@ func TestCardReplyRewritesTheCardItWasTypedInto(t *testing.T) {
 	completed := rec.ids[0]
 
 	replyOn(t, d, completed, "lgtm")
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	updates := rec.updates[completed]
 	if len(updates) == 0 {
@@ -527,7 +527,7 @@ func TestCardReplyRewritesTheCardItWasTypedInto(t *testing.T) {
 // it is the live view of the turn, which is what the user asked to see.
 func TestTheSentCardBecomesTheTurnItStarts(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
+	path := observable(t, d)
 
 	hookEvent(t, d, hook.EventStop, map[string]any{
 		"transcript_path":        path,
@@ -535,7 +535,7 @@ func TestTheSentCardBecomesTheTurnItStarts(t *testing.T) {
 	})
 	completed := rec.ids[0]
 	replyOn(t, d, completed, "now run the tests")
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	answerNow(t, path)
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
@@ -554,8 +554,8 @@ func TestTheSentCardBecomesTheTurnItStarts(t *testing.T) {
 // into must not claim to be running a turn that has not started.
 func TestCardReplyToAWaitingSessionKeepsItWaiting(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPermissionRequest, map[string]any{
 		"transcript_path": path,
@@ -586,8 +586,8 @@ func TestCardReplyToAWaitingSessionKeepsItWaiting(t *testing.T) {
 // other down.
 func TestCardReplyRecallsTheOtherCardStandingForTheSession(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
-	path := watchable(t, d)
-	defer d.closeWatch(context.Background(), "sess-1", "")
+	path := observable(t, d)
+	defer d.settleLiveCard(context.Background(), "sess-1", "")
 
 	hookEvent(t, d, hook.EventPostToolUse, map[string]any{
 		"transcript_path": path,

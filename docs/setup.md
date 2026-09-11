@@ -159,18 +159,26 @@ claude --dangerously-load-development-channels server:claude-companion
 ```
 
 A session started with plain `claude` is still discovered and sends
-notifications, but it appears in Feishu as **Notifications only**.
+notifications, but it cannot be answered from Feishu. Its cards say so and
+carry no reply box, so there is no way to type a message that would vanish.
 
-## Watching a session
+## The session card
 
-Watching needs no setup and no configuration of its own. Open a session from
-the Feishu overview and tap **Watch**, or reply `watch` for the selected
-session or `watch 2` for the second one listed. One card then updates in place
-with what Claude is broadly doing until the turn finishes, at which point it
-settles into the usual completion or failure card.
+Every session gets one card, and it opens by itself: the first real work in
+a turn puts it up, it updates in place with what Claude is broadly doing,
+and it settles into the usual completion or failure card when the turn ends.
+There is nothing to switch on, nothing to turn off, and no way to end up
+with two cards for one turn.
 
-Reply `stop watching` (or tap **Stop watching**) to close it early. A watch
-also ends on its own when the turn ends, when the session ends, and after two
-hours. Watching only reads what the session's hooks already report, so a
-**Notifications only** session can be watched even though it cannot be
-continued.
+A card also settles on its own when its session ends, when the daemon stops,
+and after two hours - a card is a check-in, not a subscription.
+
+Reply `sessions` to bring every session's card back to the bottom of the
+conversation: a card standing further up is recalled and posted again, one
+per session, with whatever needs you first. A session with nothing running
+gets a card showing what its last turn came to.
+
+Where more than one session can be continued, a numbered list follows the
+cards. It is the fallback for a Feishu app whose card callbacks are not
+configured: there, every reply box is inert, and replying `2` is the only
+way left to choose a session before typing to it.

@@ -78,7 +78,7 @@ func Decode(r io.Reader) (*Payload, error) {
 }
 
 // Subagent reports whether the event came from a subagent rather than the
-// top-level session the user is watching.
+// top-level session the user is in.
 func (p *Payload) Subagent() bool {
 	return p.AgentID != ""
 }

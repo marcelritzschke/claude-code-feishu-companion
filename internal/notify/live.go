@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
@@ -86,12 +87,11 @@ func sentSessionCard(s session.Session, view SessionView) (string, error) {
 // the one thing they cannot see at a glance.
 func workingSessionCard(s session.Session, turn *transcript.Turn, view SessionView) (string, error) {
 	template, title := "blue", "🔵 Working"+elapsedSuffix(turn)
-	footer := activityNote(view.ActivityAt)
+	footer := joinNotes(activityNote(view.ActivityAt), ReachNote(s))
 	var buttons []Button
 	switch {
 	case !s.Remote.Continuable():
 		template, title = "grey", "⚪ Working · Notifications only"
-		footer = joinNotes(footer, "Notifications only — this session cannot be controlled from here.")
 	case view.Interruptible:
 		buttons = append(buttons, Button{
 			Label:   "Interrupt",
@@ -130,6 +130,28 @@ func continuable(s session.Session) string {
 		return ""
 	}
 	return s.ID
+}
+
+// ReachNote is what a card says about talking back to this session, and it
+// goes on every card that could otherwise be mistaken for one that can be.
+//
+// A missing reply box is an absence, and an absence explains nothing: the
+// user is left to work out for themselves why this card has no box when
+// the last one did. A two-word status does not fix that - a label is
+// something to decode, and the reader has to already know the product to
+// decode it. So the note is a sentence: what cannot be done here, and what
+// to do instead.
+func ReachNote(s session.Session) string {
+	switch s.Remote {
+	case session.Notifications:
+		return "You cannot reply to this session from here: it was started without the " +
+			"Claude Companion channel. Restart it with  claude --dangerously-load-development-channels " +
+			"server:" + mcp.ServerName + "  to continue it from Feishu."
+	case session.Unconfirmed:
+		return "Claude Companion could not check whether this session takes messages. " +
+			"If one does not arrive, it will say so."
+	}
+	return ""
 }
 
 // withActivity places a turn's activity after the sections that always
@@ -177,7 +199,7 @@ func waitingSessionCard(s session.Session, turn *transcript.Turn, view SessionVi
 	}
 	bodies := []string{body, "**Where it got to**\n" + currentProgress(turn), notesBody(view.Notes)}
 	sections := append(proseOf(bodies), replyTo(continuable(s)))
-	return cardOf("orange", title+elapsedSuffix(turn), s.Describe(), sections, nil, "")
+	return cardOf("orange", title+elapsedSuffix(turn), s.Describe(), sections, nil, ReachNote(s))
 }
 
 // notesBody renders the turn's decision records, empty when there are none.
@@ -198,17 +220,42 @@ func InterruptedSessionCard(s session.Session, turn *transcript.Turn) (string, e
 		"**Where it got to**\n" + currentProgress(turn),
 	}
 	sections := append(proseOf(bodies), replyTo(continuable(s)))
-	return cardOf("grey", "⏹️ Interrupted"+elapsedSuffix(turn), s.Describe(), sections, nil, "")
+	return cardOf("grey", "⏹️ Interrupted"+elapsedSuffix(turn), s.Describe(), sections, nil, ReachNote(s))
 }
 
-// SettledWatchCard is what a session card becomes when there is nothing
+// RestingSessionCard is a session with nothing in flight: what its last
+// turn came to, or - for a session that has not run one where Claude
+// Companion could see it - simply that it is there and waiting.
+//
+// It is what the recap puts up for an idle session. A live card would be a
+// lie about a session that is doing nothing, and leaving it out of the
+// recap would hide the session the user most likely wants to talk to: an
+// idle session is the one that will read a message straight away.
+func RestingSessionCard(s session.Session, turn *transcript.Turn) (string, error) {
+	if turn == nil || nothingToShow(turn) {
+		bodies := []string{"Nothing is running in this session."}
+		sections := append(proseOf(bodies), replyTo(continuable(s)))
+		return cardOf("grey", "⚪ Idle", s.Describe(), sections, nil, ReachNote(s))
+	}
+	return SettledSessionCard(s, turn, "Nothing is running in this session right now.")
+}
+
+// nothingToShow reports a turn there is no outcome to report: a session
+// whose transcript Claude Companion has never read, or has read and found
+// nothing in.
+func nothingToShow(turn *transcript.Turn) bool {
+	return turn.Progress == "" && turn.LatestTool == nil &&
+		len(turn.Steps) == 0 && len(turn.Files) == 0 && len(turn.Tests) == 0
+}
+
+// SettledSessionCard is what a session card becomes when there is nothing
 // live left to show: the turn's outcome, and the way back into the session.
 //
 // It is the fallback settle. A turn that ends while its card is standing
 // normally settles into the ordinary completion or failure notification;
 // this one covers looking at a session that is between turns, and cards
 // put to rest for a reason of their own.
-func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
+func SettledSessionCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
 	template, title := "green", "✅ Completed"
 	if turn.Failed {
 		template, title = "red", "🔴 Failed"
@@ -224,19 +271,19 @@ func SettledWatchCard(s session.Session, turn *transcript.Turn, note string) (st
 	}
 
 	sections := append(withHistory(proseOf(bodies), turn), replyTo(continuable(s)))
-	return cardOf(template, title+elapsedSuffix(turn), s.Describe(), sections, nil, note)
+	return cardOf(template, title+elapsedSuffix(turn), s.Describe(), sections, nil, joinNotes(note, ReachNote(s)))
 }
 
-// WatchStoppedCard leaves a session card at rest while its turn is still
+// PausedSessionCard leaves a session card at rest while its turn is still
 // running. It deliberately does not read as an outcome: the work has not
 // finished, and the ordinary completion notification is still to come.
-func WatchStoppedCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
+func PausedSessionCard(s session.Session, turn *transcript.Turn, note string) (string, error) {
 	bodies := []string{"**Where it got to**\n" + currentProgress(turn)}
 	if note == "" {
 		note = "Claude is still working. Claude Companion will tell you when it finishes."
 	}
 	sections := append(proseOf(bodies), replyTo(continuable(s)))
-	return cardOf("grey", "⏸️ No longer live", s.Describe(), sections, nil, note)
+	return cardOf("grey", "⏸️ No longer live", s.Describe(), sections, nil, joinNotes(note, ReachNote(s)))
 }
 
 // LiveSignature is everything on a session card that is worth rewriting
@@ -304,7 +351,9 @@ func activityNote(at time.Time) string {
 	return "No new activity for " + formatDuration(since)
 }
 
-// joinNotes combines footer notes, skipping empty ones.
+// joinNotes combines footer notes, skipping empty ones. They are stacked
+// rather than run together: one of them is usually a whole sentence, and a
+// sentence after a middle dot reads as a fragment of the phrase before it.
 func joinNotes(notes ...string) string {
 	kept := notes[:0]
 	for _, n := range notes {
@@ -312,5 +361,5 @@ func joinNotes(notes ...string) string {
 			kept = append(kept, n)
 		}
 	}
-	return strings.Join(kept, " · ")
+	return strings.Join(kept, "\n")
 }

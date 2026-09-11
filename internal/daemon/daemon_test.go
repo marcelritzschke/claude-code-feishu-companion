@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -215,8 +216,8 @@ func TestMessageWithoutASelectionGoesNowhere(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Fatalf("the session received %v with nothing selected", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
-		t.Errorf("cards = %v, want the overview so the user can pick", titles)
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "⚪ Idle" {
+		t.Errorf("cards = %v, want the session's card so the user can pick", titles)
 	}
 }
 
@@ -236,8 +237,30 @@ func TestMessageAfterTheSelectedSessionEndedGoesNowhere(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Fatalf("the ended session received %v", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
-		t.Errorf("cards = %v, want the overview", titles)
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "⚪ Idle" {
+		t.Errorf("cards = %v, want the remaining session's card", titles)
+	}
+}
+
+// The notification a turn ends with must explain its missing reply box for
+// the same reason the live card does: an absence says nothing, and the
+// user is otherwise left wondering why this card has no box when the last
+// one did.
+func TestOutcomeOfAnUnreachableSessionSaysWhyItCannotBeAnswered(t *testing.T) {
+	d, rec, _ := fixture(t, session.Notifications)
+
+	hookEvent(t, d, hook.EventStop, map[string]any{
+		"last_assistant_message": "Rewrote the refresh flow.",
+	})
+
+	if len(rec.cards) != 1 {
+		t.Fatalf("cards = %v, want the completion", rec.titles(t))
+	}
+	if strings.Contains(rec.cards[0], "Message this session") {
+		t.Errorf("an unreachable session was offered a reply box: %s", rec.cards[0])
+	}
+	if !strings.Contains(rec.cards[0], "You cannot reply to this session from here") {
+		t.Errorf("the completion does not say why it cannot be answered: %s", rec.cards[0])
 	}
 }
 
@@ -281,8 +304,29 @@ func TestOverviewIsShownOnRequest(t *testing.T) {
 	if got := l.sent(); len(got) != 0 {
 		t.Errorf("asking for the overview was sent to a session: %v", got)
 	}
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "Claude Companion" {
-		t.Errorf("cards = %v, want the overview", titles)
+	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "⚪ Idle" {
+		t.Errorf("cards = %v, want the remaining session's card", titles)
+	}
+}
+
+// A glance does not scroll. Beyond a handful of sessions the recap shows
+// the ones that need the user - the registry lists those first - and says
+// how many it left out, so nobody counts cards and concludes a session
+// vanished.
+func TestRecapIsCappedAndSaysSo(t *testing.T) {
+	d, rec, _ := fixture(t, session.Ready)
+	for i := 2; i <= 8; i++ {
+		id := fmt.Sprintf("sess-%d", i)
+		d.reg.Attach(id, 5000+i, fmt.Sprintf("/work/p%d", i), session.Ready, &link{})
+	}
+
+	d.onMessage(context.Background(), feishu.Message{Text: "sessions"})
+
+	if len(rec.cards) != maxRecapCards {
+		t.Fatalf("cards = %d, want the recap capped at %d", len(rec.cards), maxRecapCards)
+	}
+	if len(rec.texts) != 1 || !strings.Contains(rec.texts[0], "3 quieter sessions are not shown") {
+		t.Errorf("texts = %v, want the ones left out accounted for", rec.texts)
 	}
 }
 
@@ -465,7 +509,7 @@ func TestAnUndeliverableMessageIsReportedAndDowngraded(t *testing.T) {
 // user has to be told rather than left believing Claude read it.
 func TestAMessageThatNeverReachesTheSessionIsReported(t *testing.T) {
 	d, rec, _ := fixture(t, session.Unconfirmed)
-	path := watchable(t, d)
+	path := observable(t, d)
 	selectSession(t, d, "sess-1")
 	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
 
@@ -502,7 +546,7 @@ func TestAMessageThatNeverReachesTheSessionIsReported(t *testing.T) {
 // the user believing Claude is on it.
 func TestARestingSessionIsGivenUpOnQuickly(t *testing.T) {
 	d, rec, _ := fixture(t, session.Unconfirmed)
-	path := watchable(t, d)
+	path := observable(t, d)
 	selectSession(t, d, "sess-1")
 	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
 
@@ -529,7 +573,7 @@ func TestARestingSessionIsGivenUpOnQuickly(t *testing.T) {
 // said about it.
 func TestAMessageInTheTranscriptIsNotReportedLost(t *testing.T) {
 	d, rec, _ := fixture(t, session.Unconfirmed)
-	path := watchable(t, d)
+	path := observable(t, d)
 	selectSession(t, d, "sess-1")
 	d.reg.Observe(session.Observation{ID: "sess-1", Transcript: path, HookEvent: hook.EventStop})
 
@@ -644,14 +688,21 @@ func TestEmptyCardReplySendsNothing(t *testing.T) {
 	}
 }
 
-func TestSelectingASessionConfirmsWhichOne(t *testing.T) {
+// Picking a session shows that session's own card. It names the session,
+// and it is the card the answer will come back on, so there is nothing to
+// confirm separately.
+func TestPickingASessionShowsItsCard(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
+	d.onMessage(context.Background(), feishu.Message{Text: "sessions"})
+	before := len(rec.cards)
 
-	value, _ := json.Marshal(notify.Action{Kind: notify.ActionSelect, Session: "sess-1"})
-	d.onCardAction(context.Background(), feishu.CardAction{Value: value})
+	d.onMessage(context.Background(), feishu.Message{Text: "1"})
 
-	if titles := rec.titles(t); len(titles) != 1 || titles[0] != "payments-api" {
-		t.Fatalf("cards = %v, want a confirmation naming the session", titles)
+	if len(rec.cards) != before+1 {
+		t.Fatalf("cards = %d, want one more for the session picked", len(rec.cards))
+	}
+	if !strings.Contains(rec.cards[before], "payments-api") {
+		t.Errorf("card = %s, want it to name the session", rec.cards[before])
 	}
 	s, ok := d.reg.Selected()
 	if !ok || s.ID != "sess-1" {
@@ -659,7 +710,7 @@ func TestSelectingASessionConfirmsWhichOne(t *testing.T) {
 	}
 }
 
-// A session that ended must leave the overview, and must not stay selected
+// A session that ended must leave the registry, and must not stay selected
 // as somewhere a message could still be sent.
 func TestSessionEndRemovesTheSession(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
@@ -678,7 +729,8 @@ func TestSessionEndRemovesTheSession(t *testing.T) {
 	}
 }
 
-// The lifecycle events exist for the overview, not for the phone.
+// The lifecycle events exist for what Claude Companion knows, not for the
+// phone.
 func TestLifecycleEventsAreSilent(t *testing.T) {
 	d, rec, _ := fixture(t, session.Ready)
 
@@ -690,7 +742,7 @@ func TestLifecycleEventsAreSilent(t *testing.T) {
 	}
 	s, _ := d.reg.Get("sess-1")
 	if s.State != session.Working {
-		t.Errorf("state = %q, want the overview to know the session is working", s.State)
+		t.Errorf("state = %q, want Claude Companion to know the session is working", s.State)
 	}
 }
 
@@ -789,7 +841,7 @@ func TestSessionCanBePickedByTyping(t *testing.T) {
 	}
 }
 
-// A number is resolved against the overview the user was looking at. If
+// A number is resolved against the list the user was looking at. If
 // that session has since ended, being told so is right; silently landing on
 // whatever now occupies that slot is not.
 func TestAStaleNumberPicksNothing(t *testing.T) {

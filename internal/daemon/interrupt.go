@@ -23,10 +23,10 @@ import (
 // Like every other command, it never guesses.
 func (d *Daemon) interruptRequest(ctx context.Context, number int) {
 	if number > 0 {
-		id, ok := d.pickFromOverview(strconv.Itoa(number))
+		id, ok := d.pickFromList(strconv.Itoa(number))
 		if !ok {
 			d.say(ctx, "There is no session with that number.")
-			d.showOverview(ctx)
+			d.showSessions(ctx)
 			return
 		}
 		d.interruptSession(ctx, id)
@@ -35,7 +35,7 @@ func (d *Daemon) interruptRequest(ctx context.Context, number int) {
 	s, ok := d.reg.Selected()
 	if !ok {
 		d.say(ctx, "Which session do you want to interrupt?")
-		d.showOverview(ctx)
+		d.showSessions(ctx)
 		return
 	}
 	d.interruptSession(ctx, s.ID)
@@ -70,7 +70,7 @@ func (d *Daemon) interruptSession(ctx context.Context, id string) {
 	d.reg.MarkIdle(s.ID)
 	d.settleStandingPrompt(ctx, s.ID)
 	d.settleDelivery(s.ID) // this turn is not going to report an outcome
-	w := d.endWatch(s.ID)
+	w := d.detachLiveCard(s.ID)
 	d.releaseLiveCard(s.ID)
 	if w == nil || w.messageID == "" {
 		d.say(ctx, "Interrupted "+s.Label()+". The session is back at its prompt.")

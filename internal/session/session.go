@@ -90,8 +90,8 @@ type Session struct {
 	WaitingOn Wait
 	Remote    Remote
 	// Transcript is the path to the session's Claude Code transcript, as
-	// reported by its hooks. It is what a live view is read from, so a
-	// session without one cannot be watched - only heard from.
+	// reported by its hooks. It is what a live card is read from, so a
+	// session without one can only be heard from.
 	Transcript string
 	// LastSeen is when anything was last heard about this session.
 	LastSeen time.Time
@@ -125,11 +125,11 @@ func (s *Session) Describe() string {
 // Attached reports whether a channel is currently connected to the session.
 func (s *Session) Attached() bool { return s.channel != nil }
 
-// Watchable reports whether Claude Companion can show what this session is doing.
-// It needs no channel: watching only reads the transcript the session's
-// hooks already point at, so a notifications-only session can be watched
-// even though it cannot be continued.
-func (s *Session) Watchable() bool { return s.Transcript != "" }
+// Observable reports whether Claude Companion can show what this session is
+// doing. It needs no channel: the live card only reads the transcript the
+// session's hooks already point at, so a notifications-only session still
+// gets one even though it cannot be continued.
+func (s *Session) Observable() bool { return s.Transcript != "" }
 
 // Channel returns the live link, or nil when there is none.
 func (s *Session) Channel() Channel { return s.channel }

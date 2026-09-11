@@ -65,119 +65,45 @@ func buttonsOf(t *testing.T, cardJSON string) []Button {
 	return out
 }
 
-func TestOverviewCard(t *testing.T) {
-	sessions := []session.Session{
+// The typed list is the fallback for an app whose card callbacks are not
+// configured, so it must number exactly the sessions a number can reach.
+func TestPickListNumbersOnlyTheSessionsThatCanBeContinued(t *testing.T) {
+	list := PickList([]session.Session{
 		{ID: "s1", Dir: "/work/frontend", Title: "Upgrade React", State: session.Waiting, Remote: session.Ready},
-		{ID: "s2", Dir: "/work/payments-api", Title: "Fix token refresh", State: session.Working, Remote: session.Ready},
+		{ID: "s2", Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
 		{ID: "s3", Dir: "/work/claude-companion", State: session.Idle, Remote: session.Notifications},
-	}
-	card, err := OverviewCard(sessions)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, want := range []string{"frontend", "Upgrade React", "Waiting for you", "Remote ready",
-		"payments-api", "Working", "claude-companion", "Idle", "Notifications only"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("overview is missing %q: %s", want, card)
+	})
+	for _, want := range []string{"1. ", "frontend", "Waiting for you", "2. ", "payments-api", "Working"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("list is missing %q: %s", want, list)
 		}
 	}
-
-	// A button for a session that cannot receive messages would only lead
-	// to a refusal, so it is not offered.
-	buttons := buttonsOf(t, card)
-	if len(buttons) != 2 {
-		t.Fatalf("overview offers %d buttons, want one per continuable session", len(buttons))
-	}
-	for _, b := range buttons {
-		if b.Action.Kind != ActionSelect || b.Action.Session == "s3" {
-			t.Errorf("button = %+v", b)
-		}
-	}
-
-	// Card callbacks are a separate Feishu subscription from card delivery,
-	// so the overview has to be usable by typing as well as by tapping.
-	// The numbers must run 1..n over exactly the sessions that are offered.
-	if !strings.Contains(card, "1. frontend") || !strings.Contains(card, "2. payments-api") {
-		t.Errorf("continuable sessions are not numbered for a typed reply: %s", card)
-	}
-	if strings.Contains(card, "3. claude-companion") {
-		t.Errorf("a session that cannot be continued was given a number: %s", card)
-	}
-	if !strings.Contains(card, "reply with its number") {
-		t.Errorf("the overview does not say a number can be typed: %s", card)
+	if strings.Contains(list, "claude-companion") {
+		t.Errorf("a session that cannot be continued was numbered: %s", list)
 	}
 }
 
-// The overview must never leak the identifiers Claude Companion works with.
-func TestOverviewShowsNoTechnicalIdentifiers(t *testing.T) {
-	card, err := OverviewCard([]session.Session{
+// One session is not a choice. Its own card says everything the line would.
+func TestPickListSaysNothingAboutOneSession(t *testing.T) {
+	if list := PickList([]session.Session{
+		{ID: "s1", Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
+		{ID: "s2", Dir: "/work/frontend", State: session.Idle, Remote: session.Notifications},
+	}); list != "" {
+		t.Errorf("list = %q, want nothing to choose between", list)
+	}
+}
+
+// Nothing the user reads may carry the identifiers Claude Companion works
+// with.
+func TestPickListShowsNoTechnicalIdentifiers(t *testing.T) {
+	list := PickList([]session.Session{
 		{ID: "0198c0de-cafe-7000-a1b2-0123456789ab", PID: 4242,
 			Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
+		{ID: "0198c0de-cafe-7000-a1b2-0123456789ac", PID: 4243,
+			Dir: "/work/frontend", State: session.Idle, Remote: session.Ready},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The session id travels in the button value, which is not shown; what
-	// the user reads must carry neither it nor the process id.
-	var m struct {
-		Body struct {
-			Elements []struct {
-				Tag     string `json:"tag"`
-				Content string `json:"content"`
-			} `json:"elements"`
-		} `json:"body"`
-	}
-	if err := json.Unmarshal([]byte(card), &m); err != nil {
-		t.Fatal(err)
-	}
-	for _, el := range m.Body.Elements {
-		if strings.Contains(el.Content, "0198c0de") || strings.Contains(el.Content, "4242") {
-			t.Errorf("the overview shows a technical identifier: %q", el.Content)
-		}
-	}
-}
-
-func TestOverviewWithNoSessions(t *testing.T) {
-	card, err := OverviewCard(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(card, "No Claude Code sessions are running") {
-		t.Errorf("empty overview = %s", card)
-	}
-	if len(buttonsOf(t, card)) != 0 {
-		t.Error("the empty overview offers something to pick")
-	}
-}
-
-func TestSelectedCardSaysWhereMessagesGo(t *testing.T) {
-	card, err := SelectedCard(session.Session{
-		ID: "s1", Dir: "/work/payments-api", Title: "Fix token refresh",
-		State: session.Idle, Remote: session.Ready,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"payments-api", "Fix token refresh", "Send a message here"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("selection card is missing %q: %s", want, card)
-		}
-	}
-}
-
-func TestSelectedCardIsHonestAboutUnreachableSessions(t *testing.T) {
-	card, err := SelectedCard(session.Session{
-		ID: "s1", Dir: "/work/claude-companion", State: session.Idle, Remote: session.Notifications,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(card, "Send a message here") {
-		t.Error("a session that cannot receive messages was offered as if it could")
-	}
-	if !strings.Contains(card, "only send you notifications") {
-		t.Errorf("selection card = %s", card)
+	if strings.Contains(list, "0198c0de") || strings.Contains(list, "4242") {
+		t.Errorf("the list shows a technical identifier: %q", list)
 	}
 }
 

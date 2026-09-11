@@ -92,9 +92,9 @@ type Ack struct {
 	Err string `json:"err,omitempty"`
 }
 
-// Status answers TypeStatus. It is an Ack with the one thing a caller
+// Status answers TypeStatus. It is an Ack with the two things a caller
 // cannot see from outside: which configuration the running daemon is
-// actually holding.
+// holding, and which build of the program is holding it.
 type Status struct {
 	OK bool `json:"ok"`
 	// ConfigStamp is the modification time of the config file the daemon
@@ -102,6 +102,12 @@ type Status struct {
 	// is running credentials the user has since replaced, and answers for
 	// a Feishu app they may no longer be talking to.
 	ConfigStamp time.Time `json:"config_stamp,omitempty"`
+	// Build identifies the program image the daemon is running, from
+	// buildid. A daemon whose build differs from the one installed is
+	// serving code the user has already replaced, and says so nowhere else:
+	// the binary on disk is new, the version command reports the new build,
+	// and the behaviour is the old one.
+	Build string `json:"build,omitempty"`
 }
 
 // InboundProbeWait is how long a daemon holds a TypeAwaitInbound request

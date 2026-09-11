@@ -28,7 +28,6 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/daemon"
-	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/tui"
 )
 
@@ -121,10 +120,18 @@ func runDaemon(args []string) error {
 			// returning at "asked" is the difference between the two.
 			return daemon.StopAndWait()
 		case "--status", "-status":
-			if ipc.Ping(daemonProbeTimeout) {
-				fmt.Println("claude-companion daemon is running")
-			} else {
+			switch st, answered := daemon.Answering(daemonProbeTimeout); {
+			case !answered:
 				fmt.Println("claude-companion daemon is not running")
+			case st.Stale:
+				// The question behind "is it running" is almost always
+				// "is what I just installed running". A daemon that
+				// outlived its own binary answers yes to the first and no
+				// to the second, and used to be indistinguishable.
+				fmt.Println("claude-companion daemon is running an older build than the one installed")
+				fmt.Println("It stops on its own within a minute, and the next hook or session starts a current one.")
+			default:
+				fmt.Println("claude-companion daemon is running")
 			}
 			if notice := updateNotice(currentVersion()); notice != "" {
 				fmt.Println(notice)

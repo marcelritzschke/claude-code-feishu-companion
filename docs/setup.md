@@ -88,6 +88,8 @@ choose notification and remote-control settings
     ↓
 receive a test card
     ↓
+message the bot, then tap a card button
+    ↓
 done
 ```
 
@@ -96,9 +98,16 @@ and subscriptions pre-filled. The account that scans becomes the owner for
 this Claude Companion installation: the account Claude Companion messages
 and accepts messages from.
 
-After approval, `init` registers the Claude Code hooks and channel, starts the
-local daemon, sends a test card, and verifies that Feishu can reach the local
-bridge.
+After approval, `init` registers the Claude Code hooks and channel, starts
+the local daemon, and then proves the connection in both directions: it
+sends a test card, waits for a message you send the bot, and puts up a card
+with a button for you to tap.
+
+The tap is a separate check because card delivery and card callbacks are
+separate subscriptions on a Feishu app. Cards can arrive perfectly while
+every button and reply box on them is inert, and that failure is silent -
+so setup finds it while you are still at the keyboard rather than the day a
+message you sent from a train does not arrive.
 
 ## Existing or administrator-managed Feishu app
 
@@ -178,7 +187,26 @@ conversation: a card standing further up is recalled and posted again, one
 per session, with whatever needs you first. A session with nothing running
 gets a card showing what its last turn came to.
 
-Where more than one session can be continued, a numbered list follows the
-cards. It is the fallback for a Feishu app whose card callbacks are not
-configured: there, every reply box is inert, and replying `2` is the only
-way left to choose a session before typing to it.
+## Where a message goes
+
+The reply box on a card is the address: what you type there reaches the
+session that card names and no other. It is the way to answer that cannot
+be wrong, because the session is on the screen while you choose it.
+
+A message typed in the conversation instead, with no card in front of you,
+goes to the session it can only have meant:
+
+- one session that can be continued - it goes there, and the answer names
+  it;
+- more than one - it stays put, and Claude Companion says to answer on the
+  card of the one you mean;
+- none - it stays put, and Claude Companion says why.
+
+There is no selecting, no numbering, and no remembering which session you
+are talking to. Whether there is one session is a fact about your computer
+rather than a mode you are in.
+
+Two things are still typed, because neither needs a session named for it:
+`interrupt` stops the one turn that is running, and `y <id>` / `n <id>`
+answers a permission request - the id is printed on the card that asks, so
+the answer carries its own address.

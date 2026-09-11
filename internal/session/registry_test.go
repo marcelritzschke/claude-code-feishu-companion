@@ -88,60 +88,54 @@ func TestMarkIdleEndsTheTurn(t *testing.T) {
 }
 
 // /clear gives the session a new id. It is still the same terminal, the
-// same work, and the same thing the user selected - so it must stay one
-// session, and stay selected.
+// same work, and the same session to the person at it - so it must stay
+// one session here too.
 func TestClearedSessionStaysOneSession(t *testing.T) {
 	r := NewRegistry()
 	r.Observe(Observation{ID: "sess-old", PID: 100, Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: "SessionStart"})
-	if _, ok := r.Select("sess-old"); !ok {
-		t.Fatal("could not select the session")
-	}
 
 	r.Observe(Observation{ID: "sess-new", PID: 100, Dir: "/work/payments-api", HookEvent: "UserPromptSubmit"})
 
-	if got := len(r.List()); got != 1 {
-		t.Fatalf("registry holds %d sessions, want the cleared one to have replaced the old", got)
+	live := r.List()
+	if len(live) != 1 {
+		t.Fatalf("registry holds %d sessions, want the cleared one to have replaced the old", len(live))
 	}
-	sel, ok := r.Selected()
-	if !ok {
-		t.Fatal("the selection was lost across /clear")
+	if live[0].ID != "sess-new" {
+		t.Errorf("id = %q, want the new one", live[0].ID)
 	}
-	if sel.ID != "sess-new" {
-		t.Errorf("selected id = %q, want the new one", sel.ID)
-	}
-	if sel.Title != "Fix token refresh" {
-		t.Errorf("title = %q, want the known title carried over", sel.Title)
+	if live[0].Title != "Fix token refresh" {
+		t.Errorf("title = %q, want the known title carried over", live[0].Title)
 	}
 }
 
-// The defining safety rule: a message must never reach a session the user
-// did not pick. When the selection ends, there is simply no selection.
-func TestSelectionIsNeverSubstituted(t *testing.T) {
+// Continuable is what decides whether a message typed in the conversation
+// has one place to go, so it must offer exactly the sessions that could
+// read one - never a session that would swallow it.
+func TestContinuableOffersOnlyTheSessionsThatCanRead(t *testing.T) {
 	r := NewRegistry()
-	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/payments-api", HookEvent: "SessionStart"})
-	r.Observe(Observation{ID: "sess-2", PID: 200, Dir: "/work/frontend", HookEvent: "SessionStart"})
-	if _, ok := r.Select("sess-1"); !ok {
-		t.Fatal("could not select sess-1")
+	r.Attach("sess-1", 100, "/work/payments-api", Ready, &fakeChannel{})
+	r.Attach("sess-2", 200, "/work/frontend", Notifications, &fakeChannel{})
+	r.Attach("sess-3", 300, "/work/docs", Unconfirmed, &fakeChannel{})
+
+	got := map[string]bool{}
+	for _, s := range r.Continuable() {
+		got[s.ID] = true
 	}
+	if !got["sess-1"] || !got["sess-3"] || got["sess-2"] {
+		t.Errorf("Continuable offered %v", got)
+	}
+}
+
+// A session that ended leaves, so a message that would have gone there on
+// its own has nowhere to go instead of somewhere else.
+func TestContinuableDropsAnEndedSession(t *testing.T) {
+	r := NewRegistry()
+	r.Attach("sess-1", 100, "/work/payments-api", Ready, &fakeChannel{})
 
 	r.Remove("sess-1")
 
-	if s, ok := r.Selected(); ok {
-		t.Errorf("Selected() = %q after its session ended, want no selection", s.ID)
-	}
-}
-
-func TestSelectUnknownSessionChangesNothing(t *testing.T) {
-	r := NewRegistry()
-	r.Observe(Observation{ID: "sess-1", PID: 100, Dir: "/work/api", HookEvent: "SessionStart"})
-	r.Select("sess-1")
-
-	if _, ok := r.Select("sess-gone"); ok {
-		t.Fatal("selecting a session that does not exist reported success")
-	}
-	s, ok := r.Selected()
-	if !ok || s.ID != "sess-1" {
-		t.Errorf("selection = %+v, want it left on sess-1", s)
+	if got := r.Continuable(); len(got) != 0 {
+		t.Errorf("Continuable = %v after its session ended, want none", got)
 	}
 }
 
@@ -151,15 +145,11 @@ func TestDetachEndsTheSession(t *testing.T) {
 	r := NewRegistry()
 	ch := &fakeChannel{}
 	r.Attach("sess-1", 100, "/work/api", Ready, ch)
-	r.Select("sess-1")
 
 	r.Detach(ch)
 
 	if len(r.List()) != 0 {
 		t.Error("the session outlived its channel")
-	}
-	if _, ok := r.Selected(); ok {
-		t.Error("the selection outlived its session")
 	}
 }
 
@@ -225,16 +215,16 @@ func TestSnapshotRestoresTheSelectedSession(t *testing.T) {
 	r := NewRegistry()
 	r.Attach("sess-1", ownPID(), "/work/payments-api", Ready, &fakeChannel{})
 	r.Observe(Observation{ID: "sess-1", PID: ownPID(), Dir: "/work/payments-api", Title: "Fix token refresh", HookEvent: "UserPromptSubmit"})
-	r.Select("sess-1")
 	if err := r.Save(); err != nil {
 		t.Fatal(err)
 	}
 
 	restored := Load()
-	s, ok := restored.Selected()
-	if !ok {
-		t.Fatal("the selection did not survive the daemon restart")
+	live := restored.List()
+	if len(live) != 1 {
+		t.Fatalf("the session did not survive the daemon restart: %v", live)
 	}
+	s := live[0]
 	if s.Title != "Fix token refresh" {
 		t.Errorf("title = %q, want it restored", s.Title)
 	}

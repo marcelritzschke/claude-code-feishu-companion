@@ -28,6 +28,8 @@ const (
 	// ActionSay sends what the user typed in a card's reply box to the
 	// session that card is about.
 	ActionSay = "say"
+	// ActionProbe is setup's card callback check and means nothing else.
+	ActionProbe = "probe"
 )
 
 // Verdicts a permission button carries.

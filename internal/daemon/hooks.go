@@ -65,9 +65,9 @@ func (d *Daemon) handleHook(ctx context.Context, p *hook.Payload, h ipc.Hook) {
 	var stranded, awaited bool
 	switch p.HookEventName {
 	case hook.EventSessionEnd:
-		// The session is over: it must leave the overview, it must not
-		// stay selected as somewhere a message could still be sent, and
-		// nothing may be left claiming to follow it.
+		// The session is over: nothing may go on offering it as somewhere
+		// a message could be sent, and nothing may be left claiming to
+		// follow it.
 		d.settleLiveCard(ctx, s.ID, "This session has ended.")
 		d.reg.Remove(s.ID)
 		return

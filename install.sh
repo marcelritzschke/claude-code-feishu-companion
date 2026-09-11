@@ -174,8 +174,7 @@ main() {
 	fi
 
 	# Setup runs from here so that the install is a single pasted line. The
-	# temporary directory goes first: exec replaces this shell, and an
-	# exec'd process never reaches the EXIT trap.
+	# temporary directory goes first, while there is still a trap to clear.
 	rm -rf "$workdir"
 	trap - EXIT INT TERM
 
@@ -197,7 +196,14 @@ main() {
 	fi
 
 	log ""
-	exec "$dest" init </dev/tty
+	# Not exec: setup explains its own failures, and quitting one of its
+	# questions is a decision rather than a fault, but neither of them says
+	# that the install itself stands and setup can be picked up again. This
+	# does.
+	if ! "$dest" init </dev/tty; then
+		next_step "Setup did not finish, but claude-companion is installed."
+		return 0
+	fi
 }
 
 main "$@"

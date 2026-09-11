@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/channel"
@@ -53,6 +55,7 @@ func runInit() error {
 	// arrow keys. Close gives it back, and must run whichever way this
 	// returns - including through a failure partway down.
 	defer tui.Close()
+	defer restoreOnSignal()()
 	tui.Title("Claude Companion", "Claude Code, on your phone")
 
 	cfg, client, how, err := connectFeishu()
@@ -89,6 +92,33 @@ func runInit() error {
 	checkReturnPath(how)
 	explainLaunch()
 	return nil
+}
+
+// restoreOnSignal gives the terminal back if setup is killed rather than
+// finished, and returns the function that stops watching for that.
+//
+// Raw mode is a property of the terminal, not of this process: a setup that
+// dies without restoring it leaves the user at a shell with no echo and no
+// line editing, in which the obvious fix - type something - is exactly what
+// they cannot do. ctrl+c is handled without a signal at all, because raw
+// mode delivers it as a byte; this is for everything else that ends a
+// process politely, ctrl+break on Windows above all.
+func restoreOnSignal() func() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sig:
+			tui.Close()
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+	return func() {
+		signal.Stop(sig)
+		close(done)
+	}
 }
 
 // connectFeishu gets Claude Companion a working Feishu app and the identity of the
@@ -366,9 +396,14 @@ func checkReturnPath(how setupPath) {
 		return
 	}
 	tui.Info("Send any message to the Claude Companion bot in Feishu now.")
-	tui.Detail(fmt.Sprintf("waiting up to %s", ipc.InboundProbeWait))
+	tui.Detail(fmt.Sprintf("waiting up to %s, or press ctrl+c to skip", ipc.InboundProbeWait))
 
-	env, err := ipc.Request(ipc.TypeAwaitInbound, nil, ipc.InboundProbeWait+ipc.InboundProbeGrace)
+	env, err := awaitInbound()
+	if errors.Is(err, tui.ErrAborted) {
+		tui.Warn("Skipped - Claude Companion never heard from Feishu")
+		tui.Detail("Notifications already work. Re-run " + tui.Code("claude-companion init") + " to check the return path.")
+		return
+	}
 	if err != nil {
 		explainNoInbound(how, err)
 		return
@@ -385,6 +420,36 @@ func checkReturnPath(how setupPath) {
 		explainStranger(proof.Err)
 	default:
 		explainNoInbound(how, errors.New(proof.Err))
+	}
+}
+
+// awaitInbound waits for Feishu to reach this machine, and lets the user
+// stop waiting.
+//
+// Two minutes is a long time to sit in front of a terminal that is not
+// answering the keyboard, and this is the one part of setup that is
+// waiting on something the user may not be able to produce right now - an
+// app their administrator has not approved yet, a phone in another room.
+// Without a way out, ctrl+c does nothing here and killing the terminal is
+// the only thing left to try.
+func awaitInbound() (ipc.Envelope, error) {
+	type result struct {
+		env ipc.Envelope
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		env, err := ipc.Request(ipc.TypeAwaitInbound, nil, ipc.InboundProbeWait+ipc.InboundProbeGrace)
+		done <- result{env, err}
+	}()
+	select {
+	case r := <-done:
+		return r.env, r.err
+	case <-tui.Quit():
+		// The daemon is left holding a probe that will time out on its
+		// own. Nothing waits on it, and it costs one goroutine there for
+		// as long as the wait had left to run.
+		return ipc.Envelope{}, tui.ErrAborted
 	}
 }
 

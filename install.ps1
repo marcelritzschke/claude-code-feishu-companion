@@ -124,8 +124,15 @@
     # whatever is still there is moved aside rather than replaced - renaming
     # a running image is permitted where overwriting one is not. This
     # mirrors what `claude-companion update` does for the same reason.
+    #
+    # The sidecar gets a name of its own each time. A fixed ".old" is a name
+    # two installs can want at once: anything still running the old program
+    # - a channel server inside an open Claude Code session, say - holds
+    # that file open, Windows refuses to delete it, and the next install
+    # then cannot rename onto it either. That install failed with "$Dest is
+    # in use", which is true of the sidecar and not of $Dest, and left the
+    # user with advice about the wrong file.
     function Install-Binary([string]$Staged, [string]$Dest) {
-        $old = "$Dest.old"
         if (Test-Path -LiteralPath $Dest) {
             # Best effort, and quiet either way: there may be no daemon to
             # stop, and the program already installed may be too broken to
@@ -136,20 +143,29 @@
             } catch {
                 Write-Debug "could not stop the running daemon: $($_.Exception.Message)"
             }
-            Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
+            $aside = "$Dest.old-" + [Guid]::NewGuid().ToString('N').Substring(0, 8)
             try {
-                Move-Item -LiteralPath $Dest -Destination $old -Force
+                Move-Item -LiteralPath $Dest -Destination $aside -Force
             } catch {
-                throw ("install.ps1: $Dest is in use and could not be " +
-                    "replaced; close anything still running it and retry")
+                throw ("install.ps1: $Dest could not be moved aside; close " +
+                    "anything still running it and retry: $($_.Exception.Message)")
             }
         }
         Move-Item -LiteralPath $Staged -Destination $Dest -Force
+        Clear-Sidecar $Dest
+    }
 
-        # The sidecar goes if nothing holds it any more. Anything still
-        # running the old program keeps it open, so a failure here is
-        # ordinary: the file is left for the next install to clear away.
-        Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
+    # Clear-Sidecar takes away the binaries earlier installs moved aside,
+    # each as soon as nothing holds it open any more. A failure here is
+    # ordinary - something is still running that one - and it is left for
+    # the next install to clear.
+    function Clear-Sidecar([string]$Dest) {
+        $dir = Split-Path -Parent $Dest
+        $leaf = Split-Path -Leaf $Dest
+        Get-ChildItem -LiteralPath $dir -Filter "$leaf.old*" -File -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+            }
     }
 
     # Add-ToUserPath puts the install directory on PATH for future sessions
@@ -246,15 +262,35 @@
             # Unlike the shell installer, this script's own stdin is not the
             # download: `iex` runs it inside the console the user is sitting
             # at, so init inherits that console with nothing to reopen.
-            # Without one - a scheduled task, CI - there is nothing to hand
-            # over and setup stays for the user to run later.
-            if (-not [Environment]::UserInteractive) {
+            # Without one - a scheduled task, CI, a script whose input comes
+            # from a pipe - there is nothing to hand over and setup stays for
+            # the user to run later.
+            #
+            # Both halves are needed. UserInteractive is false in a service
+            # or a scheduled task and true in every console; it is
+            # IsInputRedirected that catches the console session whose stdin
+            # is not a keyboard, where setup would otherwise start and die on
+            # its first question.
+            if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
                 Write-NextStep 'No console is attached, so setup was not started.' $dest
                 return
             }
 
             Write-Log
-            & $dest init
+            # Setup explains its own failures, and quitting one of its
+            # questions is a decision rather than a fault. What neither of
+            # them says is that the install itself stands and setup can be
+            # picked up again - so this does, instead of ending the paste on
+            # a red PowerShell error about an exit code.
+            try {
+                & $dest init
+                $failed = $LASTEXITCODE -ne 0
+            } catch {
+                $failed = $true
+            }
+            if ($failed) {
+                Write-NextStep 'Setup did not finish, but claude-companion is installed.' $dest
+            }
         } finally {
             Remove-Item -LiteralPath $workdir -Recurse -Force -ErrorAction SilentlyContinue
         }

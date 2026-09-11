@@ -38,15 +38,47 @@ type key struct {
 // then loses its first keystroke to the previous prompt's ghost. Reading
 // in one place is what makes that impossible rather than unlikely.
 type input struct {
-	keys  chan key
-	fd    int
-	state *term.State
+	keys chan key
+	// quit is closed the first time ctrl+c is seen, and stays closed.
+	//
+	// The keys channel answers the question being asked; this answers the
+	// waits in between, which have no prompt reading for them. Setup does
+	// not only ask questions - it sends a card, registers hooks, and waits
+	// two minutes for a message to come back from Feishu - and with raw
+	// mode on, ctrl+c during one of those is a byte nobody reads. The user
+	// presses it, nothing happens, and the only way out they have left is
+	// to kill the terminal, which takes the terminal's own settings with
+	// it.
+	quit     chan struct{}
+	quitOnce sync.Once
+	fd       int
+	state    *term.State
+}
+
+// abort reports that the user asked to stop, once and for good.
+func (in *input) abort() {
+	in.quitOnce.Do(func() { close(in.quit) })
+}
+
+// Quit is closed when the user presses ctrl+c, for a wait that has no
+// question to attach it to. It never closes where there is no terminal:
+// a program that cannot be typed at cannot be interrupted from one.
+func Quit() <-chan struct{} {
+	in, err := interactive()
+	if err != nil {
+		return make(chan struct{})
+	}
+	return in.quit
 }
 
 var (
 	inputOnce sync.Once
 	inputErr  error
 	shared    *input
+	// closeMu guards giving the terminal back, which can now be asked for
+	// from two places at once: the deferred Close at the end of setup, and
+	// a signal arriving while it runs.
+	closeMu sync.Mutex
 )
 
 // Interactive reports whether there is a terminal to ask questions in. A
@@ -73,7 +105,7 @@ func interactive() (*input, error) {
 			inputErr = fmt.Errorf("put terminal in raw mode: %w", err)
 			return
 		}
-		in := &input{keys: make(chan key, 16), fd: fd, state: state}
+		in := &input{keys: make(chan key, 16), quit: make(chan struct{}), fd: fd, state: state}
 		go in.read()
 		shared = in
 	})
@@ -82,7 +114,14 @@ func interactive() (*input, error) {
 
 // Close gives the terminal back. Setup defers it; nothing else needs to
 // care, because a program that never asked a question never took it.
+//
+// It is safe to call twice and from anywhere, because the signal handler
+// calls it too: a terminal in raw mode outlives the process that put it
+// there, and a shell with no echo and no line editing is the worst thing
+// an aborted setup could leave behind.
 func Close() {
+	closeMu.Lock()
+	defer closeMu.Unlock()
 	if shared != nil && shared.state != nil {
 		_ = term.Restore(shared.fd, shared.state)
 		shared.state = nil
@@ -102,6 +141,7 @@ func (in *input) read() {
 		}
 		switch b {
 		case 3: // ctrl+c
+			in.abort()
 			in.keys <- key{kind: keyInterrupt}
 		case '\r', '\n':
 			in.keys <- key{kind: keyEnter}

@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/buildid"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
@@ -60,6 +61,10 @@ type Daemon struct {
 	// interrupt delivers a turn interrupt to a session. It is a field so
 	// tests can interrupt without signalling a real process.
 	interrupt func(session.Session) error
+	// replaced reports that this daemon is no longer the program installed
+	// where it came from. A field so a test can say so without replacing
+	// the binary it is running inside.
+	replaced func() bool
 
 	// version is the running binary's own version, "dev" if unlinked. It
 	// is what checkForUpdate compares GitHub's latest release against.
@@ -216,6 +221,7 @@ func New(cfg *config.Config, out sender, in inbound, version string) *Daemon {
 		live:         map[string]*liveCard{},
 		pace:         defaultPace,
 		interrupt:    func(s session.Session) error { return s.Interrupt() },
+		replaced:     buildid.Replaced,
 		version:      version,
 		fetchRelease: update.Fetch,
 		stop:         make(chan struct{}),
@@ -352,10 +358,11 @@ func (d *Daemon) serve(ctx context.Context, conn *ipc.Conn) {
 	}
 }
 
-// replyStatus says that this daemon is answering, and which configuration
-// it is answering with.
+// replyStatus says that this daemon is answering, which configuration it
+// is answering with, and which build of the program is answering at all.
 func (d *Daemon) replyStatus(conn *ipc.Conn) {
-	if err := conn.Write(ipc.TypeAck, ipc.Status{OK: true, ConfigStamp: d.configStamp}); err != nil {
+	st := ipc.Status{OK: true, ConfigStamp: d.configStamp, Build: buildid.Stamp()}
+	if err := conn.Write(ipc.TypeAck, st); err != nil {
 		debuglog.Printf("reply: %v", err)
 	}
 }
@@ -385,10 +392,33 @@ func (d *Daemon) housekeep(ctx context.Context) {
 			if err := d.reg.Save(); err != nil {
 				debuglog.Printf("save sessions: %v", err)
 			}
+			d.retireIfReplaced()
 		case <-deliveries.C:
 			d.expireDeliveries(ctx)
 		}
 	}
+}
+
+// retireIfReplaced ends this daemon once it is no longer the program
+// installed where it came from.
+//
+// Nobody else can do this. An install stops the daemon before replacing
+// the file, but a hook firing in that window starts a fresh one from the
+// old file and the install then replaces it underneath - and no hook or
+// channel afterwards has any reason to doubt the daemon answering them.
+// So the daemon checks itself, on the beat it already keeps.
+//
+// It stops rather than restarting itself: everything that needs a daemon
+// starts one when none answers, which for a machine with a Claude Code
+// session open is the next hook or the channel's next reconnect, seconds
+// away. A machine with none has nothing to notify about and nothing to
+// continue.
+func (d *Daemon) retireIfReplaced() {
+	if !d.replaced() {
+		return
+	}
+	debuglog.Printf("this daemon is an older build than the one installed; stopping so a current one can take over")
+	d.halt()
 }
 
 // serveAwaitInbound answers once something reaches this machine from

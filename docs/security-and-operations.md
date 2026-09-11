@@ -138,6 +138,12 @@ card still waiting in Feishu is not answerable across the restart, because
 pending prompts live only in the daemon's memory. Hook processes are
 started per event, so they pick the new version up immediately.
 
+A daemon can still end up older than the program on disk - a hook firing
+between the stop and the replacement starts one from the file that is about
+to go. It notices within a minute and stops, and the next hook or channel
+starts a current one; `claude-companion daemon --status` says so meanwhile.
+Nothing has to be restarted by hand.
+
 Render a notification without a configuration file or Feishu connection:
 
 ```sh

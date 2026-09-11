@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/buildid"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/config"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/debuglog"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/flock"
@@ -68,9 +69,14 @@ func EnsureRunning() error {
 	if ipc.Ping(dialTimeout) {
 		return nil
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve executable: %w", err)
+	// The install path, not this process's own image. A channel that has
+	// been running since before an install holds an image that no longer
+	// exists under any name it could be started by; what is at the path now
+	// is the build that should be running, and starting anything else would
+	// put back the daemon the install just replaced.
+	exe := buildid.Path()
+	if exe == "" {
+		return errors.New("this program does not know where it is installed")
 	}
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
@@ -126,27 +132,48 @@ func EnsureCurrent() error {
 	return EnsureRunning()
 }
 
-// replaceIfStale stops a running daemon that read an older configuration
-// than the one on disk, and reports whether it stopped one. A daemon that
-// is current, and no daemon at all, are both left alone: starting one is
-// EnsureCurrent's business.
+// replaceIfStale stops a running daemon that is behind what is on disk -
+// an older configuration, or an older build of the program itself - and
+// reports whether it stopped one. A daemon that is current, and no daemon
+// at all, are both left alone: starting one is EnsureCurrent's business.
+//
+// The build check is the same one the daemon makes of itself on its own
+// timer. Both exist: this one makes setup's answer true immediately, and
+// the daemon's own makes it true on a machine where setup is never run
+// again.
 func replaceIfStale() (bool, error) {
 	stamp, err := config.Stamp()
 	if err != nil {
 		return false, err
 	}
 	st, ok := status()
-	if !ok || !st.ConfigStamp.Before(stamp) {
+	if !ok {
 		return false, nil
 	}
-	debuglog.Printf("daemon predates the configuration; restarting it")
+	switch {
+	case st.ConfigStamp.Before(stamp):
+		debuglog.Printf("daemon predates the configuration; restarting it")
+	case olderBuild(st):
+		debuglog.Printf("daemon is an older build than the one installed; restarting it")
+	default:
+		return false, nil
+	}
 	if err := Stop(); err != nil {
-		return false, fmt.Errorf("replacing the daemon that is running an older configuration: %w", err)
+		return false, fmt.Errorf("replacing the daemon that is behind what is installed: %w", err)
 	}
 	if err := waitUntilGone(); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// olderBuild reports that the daemon answering is running a different
+// program image from this process. Either side being unknown means no, for
+// the same reason buildid.Replaced says no: a daemon is only taken away
+// from the sessions attached to it on two certain and different answers.
+func olderBuild(st ipc.Status) bool {
+	mine := buildid.Stamp()
+	return st.Build != "" && mine != "" && st.Build != mine
 }
 
 // status asks a running daemon what it is running. A false return means no
@@ -196,6 +223,27 @@ func waitUntilGone() error {
 // Running reports whether a daemon is up, so a caller that has to take one
 // away can put back exactly what it found.
 func Running() bool { return ipc.Ping(dialTimeout) }
+
+// Answer is what a daemon says about itself when asked from outside.
+type Answer struct {
+	// Stale reports that the daemon answering is an older build of the
+	// program than the one installed. It is on its way out - it retires
+	// itself - but until it goes it is what Feishu is talking to.
+	Stale bool
+}
+
+// Answering reports whether a daemon is up and what it says about itself.
+func Answering(timeout time.Duration) (Answer, bool) {
+	env, err := ipc.Request(ipc.TypeStatus, nil, timeout)
+	if err != nil {
+		return Answer{}, false
+	}
+	var st ipc.Status
+	if err := env.Into(&st); err != nil || !st.OK {
+		return Answer{}, false
+	}
+	return Answer{Stale: olderBuild(st)}, true
+}
 
 // StopAndWait asks a running daemon to exit and returns once it has let go
 // of the single-daemon lock, which is what makes it safe to replace the

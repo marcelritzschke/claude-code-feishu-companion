@@ -11,25 +11,21 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/secfile"
 )
 
-// snapshotFile keeps the registry across a daemon restart, so the overview
-// is not blank until the next hook fires.
+// snapshotFile keeps the registry across a daemon restart, so a session
+// still has its history after one.
 const snapshotFile = "sessions.json"
 
 // staleAfter drops a session nothing has been heard from. A session that
 // ended without a SessionEnd hook - a killed terminal, a crashed daemon -
-// must not linger in the overview as something the user can talk to.
+// must not linger as something the user can talk to.
 const staleAfter = 12 * time.Hour
 
-// Registry is the live set of sessions and the one the user is talking to.
-// Every method takes the lock: the daemon touches it from the Feishu
+// Registry is the live set of Claude Code sessions on this machine. Every
+// method takes the lock: the daemon touches it from the Feishu
 // reader, from each channel's reader, and from hook connections at once.
 type Registry struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
-	// selected is the session Feishu messages go to. Sticky on purpose:
-	// the user must always know which session they are talking to, so it
-	// only ever changes when they choose.
-	selected string
 }
 
 // NewRegistry returns an empty registry.
@@ -118,7 +114,6 @@ func (r *Registry) Detach(ch Channel) {
 			continue // a later channel already replaced this one
 		}
 		delete(r.sessions, id)
-		r.clearSelectionOf(id)
 		return
 	}
 }
@@ -141,11 +136,10 @@ func (r *Registry) Remove(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.sessions, id)
-	r.clearSelectionOf(id)
 }
 
 // Downgrade records that a session did not accept a message Claude Companion sent
-// it, so the overview stops claiming it can be continued.
+// it, so nothing goes on claiming it can be continued.
 func (r *Registry) Downgrade(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -165,7 +159,7 @@ func (r *Registry) Get(id string) (Session, bool) {
 	return *s, true
 }
 
-// List returns every live session, ordered as the overview reads them.
+// List returns every live session, whatever needs the user first.
 func (r *Registry) List() []Session {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -184,40 +178,38 @@ func (r *Registry) List() []Session {
 	return out
 }
 
-// Select points Feishu messages at one session and reports whether it
-// exists. A selection that fails changes nothing: the user is asked to pick
-// again rather than having their message sent somewhere they did not choose.
-func (r *Registry) Select(id string) (Session, bool) {
+// Continuable is every session a message could be sent to.
+//
+// It replaces the selection this registry used to keep. A selection is
+// state the user cannot see: nothing on their screen said which session
+// their next message would reach, so the one promise remote continuation
+// rests on - that you always know where your message is going - was
+// something they had to remember rather than something they could read.
+// Whether there is exactly one session to talk to is a fact about the
+// machine instead, and a fact needs no remembering.
+func (r *Registry) Continuable() []Session {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s, ok := r.sessions[id]
-	if !ok {
-		return Session{}, false
-	}
-	r.selected = id
-	return *s, true
-}
 
-// Selected returns the session the user is talking to. It reports false
-// when nothing is selected or the selection has since ended - and it never
-// substitutes another session for it.
-func (r *Registry) Selected() (Session, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.selected == "" {
-		return Session{}, false
+	r.expire()
+	live := make([]*Session, 0, len(r.sessions))
+	for _, s := range r.sessions {
+		if s.Remote.Continuable() {
+			live = append(live, s)
+		}
 	}
-	s, ok := r.sessions[r.selected]
-	if !ok {
-		r.selected = ""
-		return Session{}, false
+	byAttention(live)
+
+	out := make([]Session, len(live))
+	for i, s := range live {
+		out[i] = *s
 	}
-	return *s, true
+	return out
 }
 
 // MarkWorking records that a message was pushed into a session. A channel
-// event fires no UserPromptSubmit hook, so without this the overview would
-// call a session idle at the very moment the user set it working.
+// event fires no UserPromptSubmit hook, so without this a session would be
+// called idle at the very moment the user set it working.
 func (r *Registry) MarkWorking(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -257,9 +249,6 @@ func (r *Registry) resolve(id string, pid int) *Session {
 			delete(r.sessions, oldID)
 			s.ID = id
 			r.sessions[id] = s
-			if r.selected == oldID {
-				r.selected = id // the user is still talking to this session
-			}
 			debuglog.Printf("session %s continues as %s (pid %d)", oldID, id, pid)
 			return s
 		}
@@ -277,14 +266,6 @@ func (r *Registry) expire() {
 			continue
 		}
 		delete(r.sessions, id)
-		r.clearSelectionOf(id)
-	}
-}
-
-// clearSelectionOf drops the selection when the session it named is gone.
-func (r *Registry) clearSelectionOf(id string) {
-	if r.selected == id {
-		r.selected = ""
 	}
 }
 
@@ -293,7 +274,6 @@ func (r *Registry) clearSelectionOf(id string) {
 // channels reconnect on their own.
 type snapshot struct {
 	Sessions []snapshotSession `json:"sessions"`
-	Selected string            `json:"selected,omitempty"`
 }
 
 type snapshotSession struct {
@@ -309,7 +289,7 @@ type snapshotSession struct {
 // Save writes the registry to disk.
 func (r *Registry) Save() error {
 	r.mu.Lock()
-	snap := snapshot{Selected: r.selected}
+	var snap snapshot
 	for _, s := range r.sessions {
 		snap.Sessions = append(snap.Sessions, snapshotSession{
 			ID: s.ID, PID: s.PID, Dir: s.Dir, Title: s.Title,
@@ -356,9 +336,6 @@ func Load() *Registry {
 			Transcript: s.Transcript, State: s.State,
 			Remote: Notifications, LastSeen: s.LastSeen,
 		}
-	}
-	if _, ok := r.sessions[snap.Selected]; ok {
-		r.selected = snap.Selected
 	}
 	return r
 }

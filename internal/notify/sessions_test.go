@@ -65,48 +65,6 @@ func buttonsOf(t *testing.T, cardJSON string) []Button {
 	return out
 }
 
-// The typed list is the fallback for an app whose card callbacks are not
-// configured, so it must number exactly the sessions a number can reach.
-func TestPickListNumbersOnlyTheSessionsThatCanBeContinued(t *testing.T) {
-	list := PickList([]session.Session{
-		{ID: "s1", Dir: "/work/frontend", Title: "Upgrade React", State: session.Waiting, Remote: session.Ready},
-		{ID: "s2", Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
-		{ID: "s3", Dir: "/work/claude-companion", State: session.Idle, Remote: session.Notifications},
-	})
-	for _, want := range []string{"1. ", "frontend", "Waiting for you", "2. ", "payments-api", "Working"} {
-		if !strings.Contains(list, want) {
-			t.Errorf("list is missing %q: %s", want, list)
-		}
-	}
-	if strings.Contains(list, "claude-companion") {
-		t.Errorf("a session that cannot be continued was numbered: %s", list)
-	}
-}
-
-// One session is not a choice. Its own card says everything the line would.
-func TestPickListSaysNothingAboutOneSession(t *testing.T) {
-	if list := PickList([]session.Session{
-		{ID: "s1", Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
-		{ID: "s2", Dir: "/work/frontend", State: session.Idle, Remote: session.Notifications},
-	}); list != "" {
-		t.Errorf("list = %q, want nothing to choose between", list)
-	}
-}
-
-// Nothing the user reads may carry the identifiers Claude Companion works
-// with.
-func TestPickListShowsNoTechnicalIdentifiers(t *testing.T) {
-	list := PickList([]session.Session{
-		{ID: "0198c0de-cafe-7000-a1b2-0123456789ab", PID: 4242,
-			Dir: "/work/payments-api", State: session.Working, Remote: session.Ready},
-		{ID: "0198c0de-cafe-7000-a1b2-0123456789ac", PID: 4243,
-			Dir: "/work/frontend", State: session.Idle, Remote: session.Ready},
-	})
-	if strings.Contains(list, "0198c0de") || strings.Contains(list, "4242") {
-		t.Errorf("the list shows a technical identifier: %q", list)
-	}
-}
-
 func TestPermissionRelayCardOffersBothAnswers(t *testing.T) {
 	card, err := PermissionRelayCard(
 		session.Session{ID: "s1", Dir: "/work/payments-api", Title: "Fix token refresh"},

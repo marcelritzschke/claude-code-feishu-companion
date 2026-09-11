@@ -23,6 +23,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/feishu"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/ipc"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
+	"github.com/marcelritzschke/claude-code-feishu-companion/internal/notify"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/update"
 )
@@ -47,10 +48,6 @@ type Daemon struct {
 	// awaiting holds messages pushed into a session that have not yet
 	// proved they arrived.
 	awaiting map[string]*delivery
-	// lastListed is the sessions the last numbered list offered, in the
-	// order it numbered them, so a typed "2" means the second one the user
-	// saw.
-	lastListed []string
 	// live are the session cards standing in the conversation, by session
 	// id. One session gets one card, and that card is where its turn is
 	// reported until the turn ends.
@@ -76,6 +73,9 @@ type Daemon struct {
 	// inboundWaiters are one-shot callers watching for proof that Feishu
 	// can reach this machine. Setup uses it; nothing else does.
 	inboundWaiters []chan inboundProof
+	// callbackWaiters are one-shot callers watching for proof that a card
+	// can answer back. Setup uses it; nothing else does.
+	callbackWaiters []chan struct{}
 
 	// configStamp is when the config file this daemon read was last
 	// written. It is reported on status so that a caller holding a newer
@@ -353,6 +353,8 @@ func (d *Daemon) serve(ctx context.Context, conn *ipc.Conn) {
 		d.halt()
 	case ipc.TypeAwaitInbound:
 		d.serveAwaitInbound(ctx, conn)
+	case ipc.TypeAwaitCallback:
+		d.serveAwaitCallback(ctx, conn)
 	default:
 		d.reply(conn, ipc.Ack{Err: "unknown request " + env.Type})
 	}
@@ -461,6 +463,68 @@ func strangerReason(from, want string) string {
 func (d *Daemon) replyProof(conn *ipc.Conn, proof ipc.InboundProof) {
 	if err := conn.Write(ipc.TypeAck, proof); err != nil {
 		debuglog.Printf("reply: %v", err)
+	}
+}
+
+// serveAwaitCallback puts a card with a button in front of the user and
+// answers once they tap it.
+//
+// It is the other half of the return-path check. A message proves Feishu
+// can reach this computer; only a tap proves a card can, and those are two
+// separate subscriptions on the Feishu app. The card is taken down either
+// way: a probe left in the conversation would be one more thing the user
+// has to work out the meaning of.
+func (d *Daemon) serveAwaitCallback(ctx context.Context, conn *ipc.Conn) {
+	if d.in == nil {
+		d.replyCallback(conn, ipc.CallbackProof{Err: "remote continuation is switched off"})
+		return
+	}
+	probe, err := notify.CallbackProbeCard()
+	if err != nil {
+		d.replyCallback(conn, ipc.CallbackProof{Err: err.Error()})
+		return
+	}
+	// The waiter is registered before the card goes up, so a tap that
+	// arrives while the send is still returning has somewhere to land.
+	waiter := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.callbackWaiters = append(d.callbackWaiters, waiter)
+	d.mu.Unlock()
+
+	messageID := d.sendCard(ctx, probe, nil)
+	if messageID == "" {
+		d.replyCallback(conn, ipc.CallbackProof{Err: "the probe card could not be sent"})
+		return
+	}
+	defer d.deleteCard(context.WithoutCancel(ctx), messageID)
+
+	select {
+	case <-waiter:
+		d.replyCallback(conn, ipc.CallbackProof{OK: true})
+	case <-ctx.Done():
+		d.replyCallback(conn, ipc.CallbackProof{Err: "the daemon stopped"})
+	case <-time.After(ipc.CallbackProbeWait):
+		d.replyCallback(conn, ipc.CallbackProof{Err: "no tap reached this computer"})
+	}
+}
+
+func (d *Daemon) replyCallback(conn *ipc.Conn, proof ipc.CallbackProof) {
+	if err := conn.Write(ipc.TypeAck, proof); err != nil {
+		debuglog.Printf("reply: %v", err)
+	}
+}
+
+// notifyCallbackWaiters reports that a tap got back here.
+func (d *Daemon) notifyCallbackWaiters() {
+	d.mu.Lock()
+	waiters := d.callbackWaiters
+	d.callbackWaiters = nil
+	d.mu.Unlock()
+	for _, w := range waiters {
+		select {
+		case w <- struct{}{}:
+		default:
+		}
 	}
 }
 

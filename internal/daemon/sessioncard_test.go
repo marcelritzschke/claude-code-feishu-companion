@@ -304,7 +304,6 @@ func TestTypedInterruptReachesTheSelectedSession(t *testing.T) {
 	}
 	d, _, _ := fixture(t, session.Ready)
 	observable(t, d)
-	selectSession(t, d, "sess-1")
 	d.reg.MarkWorking("sess-1")
 
 	var interrupted int
@@ -321,7 +320,6 @@ func TestTypedInterruptReachesTheSelectedSession(t *testing.T) {
 func TestInterruptIsNotStolenFromAnInstruction(t *testing.T) {
 	d, _, l := fixture(t, session.Ready)
 	observable(t, d)
-	selectSession(t, d, "sess-1")
 
 	var interrupted int
 	d.interrupt = func(session.Session) error { interrupted++; return nil }

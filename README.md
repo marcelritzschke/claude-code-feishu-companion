@@ -107,8 +107,9 @@ messages while Claude Code Channels remain in preview.
   work and keeps itself current until the turn settles into its outcome.
   There is nothing to switch on and nothing to turn off.
 - **Exact-session control.** Reply in a card's box and the message goes to
-  that session and no other. Send `sessions` to bring every session's card
-  back to the bottom of the chat. Ended sessions are never silently replaced.
+  that session and no other. Typed in the chat instead, it goes to the one
+  session that can take it, or nowhere — never to a session you did not
+  mean. Send `sessions` to bring every card back to the bottom of the chat.
 - **Honest about what it cannot do.** A session started without the
   Companion channel gets no reply box, and the card says so in a sentence.
 - **Interrupt.** Tap **Interrupt**, or send `interrupt`, to stop the current

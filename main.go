@@ -113,7 +113,13 @@ func runDaemon(args []string) error {
 	for _, a := range args {
 		switch a {
 		case "--stop", "-stop":
-			return daemon.Stop()
+			// Waiting, not asking: a stopping daemon closes its listener
+			// early and stays alive to settle the cards standing on the
+			// user's phone, so it stops answering seconds before it exits.
+			// Every caller of this - an install about to replace the
+			// program the daemon is running, above all - means "gone", and
+			// returning at "asked" is the difference between the two.
+			return daemon.StopAndWait()
 		case "--status", "-status":
 			if ipc.Ping(daemonProbeTimeout) {
 				fmt.Println("claude-companion daemon is running")

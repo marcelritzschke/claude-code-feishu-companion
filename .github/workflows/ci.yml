@@ -84,9 +84,11 @@ jobs:
           $exe = Join-Path $env:INSTALL_DIR 'claude-companion.exe'
           if (-not (Test-Path $exe)) { throw "install.ps1 left no binary at $exe" }
           # Again, over the binary the first run installed: this is the
-          # replace-a-running-image path, and it must leave no .old behind.
+          # replace-a-running-image path, and it must clear away every
+          # sidecar it left, whatever each one was named.
           Get-Content -Raw .\install.ps1 | Invoke-Expression
-          if (Test-Path "$exe.old") { throw "install.ps1 left a sidecar behind" }
+          $aside = Get-ChildItem -Path $env:INSTALL_DIR -Filter 'claude-companion.exe.old*' -File
+          if ($aside) { throw "install.ps1 left $($aside.Count) sidecar(s) behind" }
           & $exe --version
 
   goreleaser-check:

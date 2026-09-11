@@ -2,7 +2,6 @@ package notify
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
@@ -10,112 +9,34 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
 )
 
-// Caps for the remote-continuation surfaces, in runes. A permission a user is about to
-// approve is shown far more generously than anything else on a card,
-// because approving what you cannot see is the failure this feature must
-// not have.
-const (
-	commandFullCap = 900 // the command a permission card asks about
-	titleCap       = 60  // a session's own name for its work
-	messageCap     = 120 // an echo of what the user sent
-)
+// commandFullCap is how much of a command a permission card shows, in
+// runes. It is far more generous than anything else on a card, because
+// approving what you cannot see is the failure this feature must not have.
+const commandFullCap = 900
 
-// OverviewCard answers the whole of "what is running on my computer": which
-// sessions exist, what each is broadly doing, which needs attention, and
-// which can be continued from here. Nothing on it identifies a session by
-// anything but its project and its work.
-func OverviewCard(sessions []session.Session) (string, error) {
-	if len(sessions) == 0 {
-		return card("grey", "Claude Companion", "", []string{
-			"No Claude Code sessions are running on your computer right now.",
-		}, nil, "Start one with `claude`, and it will appear here.")
-	}
-
-	var (
-		bodies  []string
-		buttons []Button
-		offered int
-	)
+// PickList is the typed way to choose a session, for when the cards
+// cannot be tapped.
+//
+// Card callbacks are a separate Feishu subscription from card delivery, so
+// an app can send perfectly good session cards while every reply box on
+// them is inert. A plain-text list needs nothing but a chat, which is why
+// it is what the numbered replies resolve against.
+//
+// It is empty when there is nothing to choose between: one session, or
+// none that can be continued, is answered by that session's own card.
+func PickList(sessions []session.Session) string {
+	var lines []string
 	for _, s := range sessions {
-		// Only the sessions that can be continued are numbered, because the
-		// number is an offer to talk to one, and offering a session that
-		// would refuse is worse than not offering it.
-		number := 0
-		if s.Remote.Continuable() {
-			offered++
-			number = offered
-		}
-		bodies = append(bodies, overviewRow(s, number))
-		if number == 0 {
+		if !s.Remote.Continuable() {
 			continue
 		}
-		buttons = append(buttons, Button{
-			Label:  strconv.Itoa(number) + ". " + truncateRunes(s.Describe(), titleCap),
-			Action: Action{Kind: ActionSelect, Session: s.ID},
-		})
+		lines = append(lines, fmt.Sprintf("%d. %s %s · %s",
+			len(lines)+1, stateMark(s.State), s.Label(), stateWord(s.State)))
 	}
-
-	footer := "Tap a session, or reply with its number, to continue it."
-	if offered == 0 {
-		footer = "None of these sessions can be continued from here."
+	if len(lines) < 2 {
+		return ""
 	}
-	return card("blue", "Claude Companion", "Your local Claude sessions", bodies, buttons, footer)
-}
-
-// overviewRow is one session as the overview reads it: a state anyone can
-// scan, the project, its work, and an honest word about reachability. A
-// number is shown only for a session the user can pick by typing it.
-func overviewRow(s session.Session, number int) string {
-	var b strings.Builder
-	if number > 0 {
-		fmt.Fprintf(&b, "%s **%d. %s**", stateMark(s.State), number, s.Label())
-	} else {
-		fmt.Fprintf(&b, "%s **%s**", stateMark(s.State), s.Label())
-	}
-	if s.Title != "" {
-		b.WriteString("\n" + truncateRunes(s.Title, titleCap))
-	}
-	b.WriteString("\n" + stateWord(s.State) + " · " + remoteWord(s.Remote))
-	return b.String()
-}
-
-// SelectedCard confirms which session the user is now talking to. It exists
-// because the one rule this feature cannot bend is that the user always
-// knows where their next message is going.
-func SelectedCard(s session.Session) (string, error) {
-	bodies := []string{sessionIdentity(s)}
-	footer := "Send a message here to continue this Claude session."
-	if !s.Remote.Continuable() {
-		footer = "This session was not started with Claude Companion enabled, so it can only send you notifications."
-	}
-
-	// Watching needs no channel - it only reads what the session's hooks
-	// already report - so it is offered even for a session that can do
-	// nothing else from here.
-	var buttons []Button
-	if s.Watchable() {
-		buttons = append(buttons, Button{
-			Label:  "Watch",
-			Action: Action{Kind: ActionWatch, Session: s.ID},
-		})
-		footer += "\nOr tap Watch, or reply  watch  , to see what it is doing."
-	}
-	sections := append(proseOf(bodies), replyTo(continuable(s)))
-	return cardOf("blue", s.Label(), "", sections, buttons, footer)
-}
-
-// sessionIdentity is the block that names a session on its own card: its
-// work, where it lives, and whether it can hear you.
-func sessionIdentity(s session.Session) string {
-	var b strings.Builder
-	if s.Title != "" {
-		b.WriteString(truncateRunes(s.Title, titleCap) + "\n")
-	}
-	if s.Dir != "" {
-		b.WriteString(pathdisp.Home(s.Dir) + "\n")
-	}
-	b.WriteString("\n" + stateMark(s.State) + " " + remoteWord(s.Remote))
-	return b.String()
+	return "Reply with a number to send your next message to one of these:\n" + strings.Join(lines, "\n")
 }
 
 // PermissionRelayCard puts a tool approval in front of the user with the
@@ -233,18 +154,5 @@ func stateWord(st session.State) string {
 		return "Working"
 	default:
 		return "Idle"
-	}
-}
-
-// remoteWord says what the user can do with a session, in their terms. A
-// session Claude Companion cannot reach is not broken - it just does less.
-func remoteWord(r session.Remote) string {
-	switch r {
-	case session.Ready:
-		return "Remote ready"
-	case session.Unconfirmed:
-		return "Remote untested"
-	default:
-		return "Notifications only"
 	}
 }

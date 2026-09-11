@@ -18,7 +18,7 @@ func PermissionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 	}
 	return cardOf("orange", "⚠️ Permission required", contextLine(p, turn),
 		append(proseOf(bodies), replyTo(opts.ContinueSession)), nil,
-		"Open Claude Code to respond.")
+		joinNotes("Open Claude Code to respond.", opts.Reach))
 }
 
 // QuestionCard fires when Claude asks a multiple-choice question; the
@@ -73,7 +73,7 @@ func CompletionCard(p *hook.Payload, turn *transcript.Turn, opts Options) (strin
 	}
 	sections := append(withHistory(proseOf(bodies), turn), replyTo(opts.ContinueSession))
 	return cardOf("green", "✅ Completed"+elapsedSuffix(turn), contextLine(p, turn),
-		sections, nil, "")
+		sections, nil, opts.Reach)
 }
 
 // FailureCard reports a turn that needs the user instead of one that
@@ -93,7 +93,7 @@ func FailureCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string, 
 	}
 	sections := append(withHistory(proseOf(bodies), turn), replyTo(opts.ContinueSession))
 	return cardOf("red", "🔴 Failed"+elapsedSuffix(turn), contextLine(p, turn),
-		sections, nil, "Open Claude Code to continue.")
+		sections, nil, joinNotes("Open Claude Code to continue.", opts.Reach))
 }
 
 // failureText says why the turn needs the user, in one sentence.
@@ -133,7 +133,7 @@ func ProgressCard(p *hook.Payload, turn *transcript.Turn, opts Options) (string,
 		bodies = append(bodies, "**So far**\n"+facts)
 	}
 	return cardOf("yellow", "🟡 Claude is still working", contextWithDuration(p, turn),
-		append(proseOf(bodies), replyTo(opts.ContinueSession)), nil, "")
+		append(proseOf(bodies), replyTo(opts.ContinueSession)), nil, opts.Reach)
 }
 
 // apiFailureText turns a StopFailure error type into a sentence a phone

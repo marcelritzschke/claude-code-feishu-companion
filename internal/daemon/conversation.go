@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"context"
-	"strconv"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,11 +14,11 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
-// overviewWords are the things a user types when they want to see what is
+// recapWords are the things a user types when they want to see what is
 // running rather than say something to a session. The list is short and
 // matched whole: a word that could plausibly begin an instruction must
 // never swallow the instruction.
-var overviewWords = map[string]bool{
+var recapWords = map[string]bool{
 	"sessions": true, "/sessions": true, "session": true,
 	"claude-companion": true, "/claude-companion": true,
 	"status": true, "/status": true,
@@ -40,9 +40,9 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 	// is theirs. That it arrived, and where it went, is what makes a
 	// message that vanished diagnosable at all.
 	debuglog.Printf("inbound message from Feishu (%d characters)", len(text))
-	if overviewWords[strings.ToLower(strings.Trim(text, " ?."))] {
-		debuglog.Printf("read as a request for the overview")
-		d.showOverview(ctx)
+	if recapWords[strings.ToLower(strings.Trim(text, " ?."))] {
+		debuglog.Printf("read as a request to see the sessions")
+		d.showSessions(ctx)
 		return
 	}
 	if requestID, allow, ok := parseVerdict(text); ok {
@@ -55,19 +55,11 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		}, "")
 		return
 	}
-	if number, ok := parseWatch(text); ok {
-		d.watchRequest(ctx, number)
-		return
-	}
-	if parseStopWatch(text) {
-		d.stopWatchRequest(ctx)
-		return
-	}
 	if number, ok := parseInterrupt(text); ok {
 		d.interruptRequest(ctx, number)
 		return
 	}
-	if id, ok := d.pickFromOverview(text); ok {
+	if id, ok := d.pickFromList(text); ok {
 		d.selectSession(ctx, id)
 		return
 	}
@@ -79,23 +71,23 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		// makes remote continuation safe.
 		debuglog.Printf("no session is selected; asking which one")
 		d.say(ctx, "Which session should this go to?")
-		d.showOverview(ctx)
+		d.showSessions(ctx)
 		return
 	}
 	d.sendToSession(ctx, s, text)
 }
 
-// pickFromOverview resolves a numbered reply against the overview the user
-// is actually looking at, not against the current list.
+// pickFromList resolves a numbered reply against the list the user is
+// actually looking at, not against the current one.
 //
-// The distinction matters: a session can end between the overview being
-// sent and the reply arriving, and resolving "2" against a list that has
-// since shifted would deliver the message to a session the user never
-// chose. Resolved this way, a stale number names a session that is gone,
-// and being told so is the correct outcome.
-func (d *Daemon) pickFromOverview(text string) (string, bool) {
+// The distinction matters: a session can end between the list being sent
+// and the reply arriving, and resolving "2" against a list that has since
+// shifted would deliver the message to a session the user never chose.
+// Resolved this way, a stale number names a session that is gone, and
+// being told so is the correct outcome.
+func (d *Daemon) pickFromList(text string) (string, bool) {
 	d.mu.Lock()
-	listed := append([]string(nil), d.lastOverview...)
+	listed := append([]string(nil), d.lastListed...)
 	d.mu.Unlock()
 
 	i, ok := parsePick(text, len(listed))
@@ -170,24 +162,80 @@ func deliveryAnswer(s session.Session, before session.State) string {
 	}
 }
 
-// showOverview answers "what is running on my computer", and remembers
-// exactly which sessions it offered so a numbered reply means what the user
-// saw when they typed it.
-func (d *Daemon) showOverview(ctx context.Context) {
+// showSessions answers "what is running on my computer" with the sessions
+// themselves rather than with a list of them.
+//
+// There is nothing a list could say that the session's own card does not
+// say better, and one of them is a card the user can reply on. So each
+// session's card is put back at the bottom of the conversation, in the
+// order that puts whatever needs the user first.
+//
+// The numbered text list that follows is the fallback, not the answer:
+// card callbacks are a separate Feishu subscription from card delivery,
+// and where they are missing every reply box is inert and a typed number
+// is the only way left to choose a session.
+func (d *Daemon) showSessions(ctx context.Context) {
 	sessions := d.reg.List()
+	if len(sessions) == 0 {
+		d.say(ctx, "No Claude Code sessions are running on your computer right now.\n"+
+			"Start one with  claude  , and it will appear here.")
+		d.mu.Lock()
+		d.lastListed = nil
+		d.mu.Unlock()
+		return
+	}
+	// The registry lists whatever needs the user first, so a cut here
+	// keeps the ones that matter. Saying how many were left out beats a
+	// user counting cards and finding one of their sessions missing.
+	rest := 0
+	if len(sessions) > maxRecapCards {
+		rest = len(sessions) - maxRecapCards
+		sessions = sessions[:maxRecapCards]
+	}
+
 	offered := make([]string, 0, len(sessions))
 	for _, s := range sessions {
 		if s.Remote.Continuable() {
 			offered = append(offered, s.ID)
 		}
+		d.repostSessionCard(ctx, s)
 	}
 	d.mu.Lock()
-	d.lastOverview = offered
+	d.lastListed = offered
 	d.mu.Unlock()
 
-	card, err := notify.OverviewCard(sessions)
-	d.sendCard(ctx, card, err)
+	note := notify.PickList(sessions)
+	if rest > 0 {
+		note = joinLines(note, fmt.Sprintf("%d quieter %s not shown.",
+			rest, plural(rest, "session is", "sessions are")))
+	}
+	if note != "" {
+		d.say(ctx, note)
+	}
 }
+
+// joinLines stacks the lines that follow the cards, skipping empty ones.
+func joinLines(lines ...string) string {
+	kept := lines[:0]
+	for _, l := range lines {
+		if l != "" {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+// plural picks the form that matches a count.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// maxRecapCards bounds how many cards one request can put up. The recap is
+// a glance at what is running, and a glance does not scroll.
+const maxRecapCards = 5
 
 // onCardAction handles a button the user tapped.
 func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
@@ -196,14 +244,8 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 		return
 	}
 	switch act.Kind {
-	case notify.ActionSelect:
-		d.selectSession(ctx, act.Session)
 	case notify.ActionPermit:
 		d.answerPermission(ctx, act, action.MessageID)
-	case notify.ActionWatch:
-		d.watchSession(ctx, act.Session)
-	case notify.ActionUnwatch:
-		d.closeWatch(ctx, act.Session, "You stopped watching this session.")
 	case notify.ActionInterrupt:
 		d.interruptSession(ctx, act.Session)
 	case notify.ActionSay:
@@ -234,7 +276,7 @@ func (d *Daemon) replyOnCard(ctx context.Context, id, messageID, text string) {
 	s, ok := d.reg.Get(id)
 	if !ok {
 		d.say(ctx, "That session has ended.")
-		d.showOverview(ctx)
+		d.showSessions(ctx)
 		return
 	}
 	// Answering a card is also choosing a session: whatever the user types
@@ -266,82 +308,19 @@ func sentOnCard(before session.State, text string) string {
 	return text
 }
 
-// selectSession points the user's next messages at one session and says so.
-// The confirmation is not a formality: knowing which session you are
-// talking to is the whole of what makes this safe.
+// selectSession points the user's next messages at one session and shows
+// that session's card. Which session you are talking to is the whole of
+// what makes this safe, and the card that says so is the same card the
+// answer will come back on.
 func (d *Daemon) selectSession(ctx context.Context, id string) {
 	s, ok := d.reg.Select(id)
 	if !ok {
 		d.say(ctx, "That session has ended.")
-		d.showOverview(ctx)
+		d.showSessions(ctx)
 		return
 	}
-	card, err := notify.SelectedCard(s)
-	d.sendCard(ctx, card, err)
+	d.repostSessionCard(ctx, s)
 	debuglog.Printf("selected %s", s.Describe())
-}
-
-// watchRequest opens the live view of the session the user named: the one
-// they picked out of the last overview, or the one they are already
-// talking to. It never guesses - the same rule that governs where a
-// message goes governs which session the user is shown.
-func (d *Daemon) watchRequest(ctx context.Context, number int) {
-	if number > 0 {
-		id, ok := d.pickFromOverview(strconv.Itoa(number))
-		if !ok {
-			d.say(ctx, "There is no session with that number.")
-			d.showOverview(ctx)
-			return
-		}
-		d.watchSession(ctx, id)
-		return
-	}
-	s, ok := d.reg.Selected()
-	if !ok {
-		d.say(ctx, "Which session do you want to watch?")
-		d.showOverview(ctx)
-		return
-	}
-	d.watchSession(ctx, s.ID)
-}
-
-// watchSession opens the live view of one session by id.
-func (d *Daemon) watchSession(ctx context.Context, id string) {
-	s, ok := d.reg.Get(id)
-	if !ok {
-		d.say(ctx, "That session has ended.")
-		d.showOverview(ctx)
-		return
-	}
-	d.startWatch(ctx, s)
-}
-
-// stopWatchRequest closes the live view the user meant: the selected
-// session's, or the only one open when nothing is selected.
-func (d *Daemon) stopWatchRequest(ctx context.Context) {
-	note := "You stopped watching this session."
-	if s, ok := d.reg.Selected(); ok && d.watching(s.ID) {
-		d.closeWatch(ctx, s.ID, note)
-		d.say(ctx, "Stopped watching "+s.Label()+".")
-		return
-	}
-	d.mu.Lock()
-	open := make([]string, 0, len(d.watches))
-	for id := range d.watches {
-		open = append(open, id)
-	}
-	d.mu.Unlock()
-
-	switch len(open) {
-	case 0:
-		d.say(ctx, "You are not watching any session.")
-	case 1:
-		d.closeWatch(ctx, open[0], note)
-		d.say(ctx, "Stopped watching.")
-	default:
-		d.say(ctx, "Pick the session you want to stop watching first.")
-		d.showOverview(ctx)
-	}
 }
 
 // How long a session has to show a pushed message in its transcript before

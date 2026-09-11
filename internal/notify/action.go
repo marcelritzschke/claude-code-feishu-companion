@@ -20,14 +20,8 @@ type Action struct {
 
 // Action kinds.
 const (
-	// ActionSelect points the user's next messages at a session.
-	ActionSelect = "select"
 	// ActionPermit answers a relayed permission request.
 	ActionPermit = "permit"
-	// ActionWatch opens the live view of a session.
-	ActionWatch = "watch"
-	// ActionUnwatch closes it again.
-	ActionUnwatch = "unwatch"
 	// ActionInterrupt stops a session's current turn, returning the session
 	// to its prompt. It never terminates the session itself.
 	ActionInterrupt = "interrupt"

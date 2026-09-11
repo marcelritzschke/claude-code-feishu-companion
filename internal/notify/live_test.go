@@ -11,7 +11,7 @@ import (
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/transcript"
 )
 
-func watched() session.Session {
+func liveSession() session.Session {
 	return session.Session{
 		ID: "s1", Dir: "/work/payments-api", Title: "Fix token refresh",
 		State: session.Working, Remote: session.Ready, Transcript: "/tmp/t.jsonl",
@@ -32,7 +32,7 @@ func TestSessionCardAnswersWhatClaudeIsDoing(t *testing.T) {
 			step("Bash", map[string]any{"command": "go test ./..."}, false, false, ""),
 		},
 	}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestLongTurnStaysWithinTheElementBudget(t *testing.T) {
 	turn := &transcript.Turn{Start: time.Now().Add(-3 * time.Hour), Title: "Long refactor",
 		Progress: "Still going.", Steps: steps}
 
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestOverflowIsFoldedRatherThanDiscarded(t *testing.T) {
 		steps = append(steps, step("Bash", map[string]any{"command": fmt.Sprintf("cmd%d", i)}, true, true, "boom"))
 	}
 	turn := &transcript.Turn{Start: time.Now().Add(-time.Hour), Progress: "Working.", Steps: steps}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestRecoveredFailureIsDistinguishedFromTheTaskFailing(t *testing.T) {
 				"dial tcp 127.0.0.1:5432: connection refused"),
 		},
 	}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestSessionCardNeverShowsReasoning(t *testing.T) {
 		Start:      time.Now().Add(-time.Minute),
 		LatestTool: &transcript.ToolCall{Name: "Bash", Input: map[string]any{"command": "go test ./..."}},
 	}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now()})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestSessionCardNeverShowsReasoning(t *testing.T) {
 }
 
 func TestWaitingSessionLeadsWithAttention(t *testing.T) {
-	s := watched()
+	s := liveSession()
 	s.State = session.Waiting
 	s.WaitingOn = session.WaitPermission
 	card, err := SessionCard(s, &transcript.Turn{Start: time.Now()}, SessionView{})
@@ -232,7 +232,7 @@ func TestWaitingSessionLeadsWithAttention(t *testing.T) {
 }
 
 func TestNotificationOnlySessionCardIsHonest(t *testing.T) {
-	s := watched()
+	s := liveSession()
 	s.Remote = session.Notifications
 	card, err := SessionCard(s, &transcript.Turn{Start: time.Now(), Progress: "Improving the README."},
 		SessionView{ActivityAt: time.Now().Add(-12 * time.Second), Interruptible: false})
@@ -241,7 +241,8 @@ func TestNotificationOnlySessionCardIsHonest(t *testing.T) {
 	}
 	for _, want := range []string{
 		"⚪ Working · Notifications only",
-		"Notifications only",
+		"You cannot reply to this session from here",
+		"--dangerously-load-development-channels",
 	} {
 		if !strings.Contains(card, want) {
 			t.Errorf("notification-only card is missing %q: %s", want, card)
@@ -250,11 +251,91 @@ func TestNotificationOnlySessionCardIsHonest(t *testing.T) {
 	if strings.Contains(card, "Interrupt") {
 		t.Errorf("a session that cannot be controlled must not offer control: %s", card)
 	}
+	if strings.Contains(card, "Message this session") {
+		t.Errorf("a session that cannot hear the user must not offer a reply box: %s", card)
+	}
+}
+
+// A reply box that swallowed messages would be worse than no box, so a
+// session that cannot be reached gets none - on every card it can appear
+// on, not only the working one. And because an absence explains nothing,
+// each of them says why in a sentence.
+func TestNoReplyBoxWithoutAWordAboutWhy(t *testing.T) {
+	s := liveSession()
+	s.Remote = session.Notifications
+	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute), Progress: "Improving the README."}
+	view := SessionView{ActivityAt: time.Now()}
+
+	cards := map[string]func() (string, error){
+		"working":  func() (string, error) { return SessionCard(s, turn, view) },
+		"waiting":  func() (string, error) { s := s; s.State = session.Waiting; return SessionCard(s, turn, view) },
+		"settled":  func() (string, error) { return SettledSessionCard(s, turn, "") },
+		"paused":   func() (string, error) { return PausedSessionCard(s, turn, "") },
+		"resting":  func() (string, error) { return RestingSessionCard(s, turn) },
+		"no turns": func() (string, error) { return RestingSessionCard(s, &transcript.Turn{}) },
+	}
+	for name, build := range cards {
+		card, err := build()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if strings.Contains(card, "Message this session") {
+			t.Errorf("%s card offers a reply box a message would vanish into: %s", name, card)
+		}
+		if !strings.Contains(card, "You cannot reply to this session from here") {
+			t.Errorf("%s card does not say why it has no reply box: %s", name, card)
+		}
+	}
+}
+
+// A session Claude Companion could not check keeps its box - it may well
+// work - but says so, rather than letting the user find out by silence.
+func TestUnconfirmedSessionSaysItIsUnconfirmed(t *testing.T) {
+	s := liveSession()
+	s.Remote = session.Unconfirmed
+	card, err := SessionCard(s, &transcript.Turn{Start: time.Now(), Progress: "Improving the README."},
+		SessionView{ActivityAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "Message this session") {
+		t.Errorf("an unconfirmed session may well take messages: %s", card)
+	}
+	if !strings.Contains(card, "could not check whether this session takes messages") {
+		t.Errorf("card does not say the reply may not arrive: %s", card)
+	}
+}
+
+// The recap's card for a session between turns: the last outcome when
+// there was one, and an honest nothing when there was not.
+func TestRestingCardShowsTheLastTurnOrNothing(t *testing.T) {
+	turn := &transcript.Turn{
+		Start:    time.Now().Add(-9 * time.Minute),
+		Progress: "Implemented token rotation.",
+	}
+	card, err := RestingSessionCard(liveSession(), turn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "Implemented token rotation.") {
+		t.Errorf("resting card does not show the last turn: %s", card)
+	}
+
+	card, err = RestingSessionCard(liveSession(), &transcript.Turn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(card, "⚪ Idle") || !strings.Contains(card, "Nothing is running in this session.") {
+		t.Errorf("a session with no turn to show = %s", card)
+	}
+	if strings.Contains(card, "Completed") {
+		t.Errorf("a session that has run nothing must not claim a completed turn: %s", card)
+	}
 }
 
 func TestInterruptedCardPreservesTheSession(t *testing.T) {
 	turn := &transcript.Turn{Start: time.Now().Add(-3 * time.Minute), Progress: "Halfway through the callers."}
-	card, err := InterruptedSessionCard(watched(), turn)
+	card, err := InterruptedSessionCard(liveSession(), turn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,13 +353,13 @@ func TestInterruptedCardPreservesTheSession(t *testing.T) {
 	}
 }
 
-func TestSettledWatchCardIsAnOutcomeAndAWayBack(t *testing.T) {
+func TestSettledSessionCardIsAnOutcomeAndAWayBack(t *testing.T) {
 	turn := &transcript.Turn{
 		Start:    time.Now().Add(-8*time.Minute - 41*time.Second),
 		Progress: "Implemented token rotation and consolidated refresh validation. The rest is detail.",
 		Tests:    []transcript.TestRun{{Command: "go test ./...", Passed: true}},
 	}
-	card, err := SettledWatchCard(watched(), turn, "")
+	card, err := SettledSessionCard(liveSession(), turn, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,14 +374,14 @@ func TestSettledWatchCardIsAnOutcomeAndAWayBack(t *testing.T) {
 			t.Errorf("settled card is missing %q: %s", want, card)
 		}
 	}
-	if strings.Contains(card, "Stop watching") {
-		t.Errorf("a settled card must not still offer to stop watching: %s", card)
+	if strings.Contains(card, "Interrupt") {
+		t.Errorf("a settled card must not still offer to stop the turn: %s", card)
 	}
 }
 
-func TestStoppedWatchDoesNotReadAsAnOutcome(t *testing.T) {
+func TestPausedCardDoesNotReadAsAnOutcome(t *testing.T) {
 	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute), Progress: "Still working through the callers."}
-	card, err := WatchStoppedCard(watched(), turn, "")
+	card, err := PausedSessionCard(liveSession(), turn, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,12 +389,12 @@ func TestStoppedWatchDoesNotReadAsAnOutcome(t *testing.T) {
 		t.Errorf("the turn is still running; the card must not claim it finished: %s", card)
 	}
 	if !strings.Contains(card, "No longer live") {
-		t.Errorf("stopped card = %s", card)
+		t.Errorf("paused card = %s", card)
 	}
 }
 
 func TestLiveSignatureIgnoresTheClock(t *testing.T) {
-	s := watched()
+	s := liveSession()
 	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute), Progress: "Consolidating."}
 	first := LiveSignature(s, turn)
 
@@ -368,7 +449,7 @@ func TestRunningAndFailedActionsKeepTheirOwnLine(t *testing.T) {
 // one tap away from every scroll. It must ask before it acts.
 func TestInterruptAsksBeforeItStopsTheTurn(t *testing.T) {
 	turn := &transcript.Turn{Start: time.Now().Add(-time.Minute), Progress: "Running the tests."}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now(), Interruptible: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +495,7 @@ func TestSentCardStandsInForTheTurnItStarts(t *testing.T) {
 		Progress: "Added refresh-token rotation.",
 		Steps:    []transcript.Step{step("Edit", map[string]any{"file_path": "/x/refresh.go"}, true, false, "")},
 	}
-	card, err := SessionCard(watched(), turn, SessionView{ActivityAt: time.Now(), Sent: "lgtm, ship it"})
+	card, err := SessionCard(liveSession(), turn, SessionView{ActivityAt: time.Now(), Sent: "lgtm, ship it"})
 	if err != nil {
 		t.Fatal(err)
 	}

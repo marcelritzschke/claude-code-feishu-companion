@@ -46,12 +46,15 @@ type Daemon struct {
 	// awaiting holds messages pushed into a session that have not yet
 	// proved they arrived.
 	awaiting map[string]*delivery
-	// lastOverview is the sessions the last overview offered, in the order
-	// it numbered them, so a typed "2" means the second one the user saw.
-	lastOverview []string
-	// watches are the sessions the user asked to see live, by session id.
-	watches map[string]*watch
-	// pace is how often a watch looks and how often it may rewrite its
+	// lastListed is the sessions the last numbered list offered, in the
+	// order it numbered them, so a typed "2" means the second one the user
+	// saw.
+	lastListed []string
+	// live are the session cards standing in the conversation, by session
+	// id. One session gets one card, and that card is where its turn is
+	// reported until the turn ends.
+	live map[string]*liveCard
+	// pace is how often a live card looks and how often it may rewrite its
 	// card. Set once at construction and read-only thereafter.
 	pace pace
 	// interrupt delivers a turn interrupt to a session. It is a field so
@@ -210,7 +213,7 @@ func New(cfg *config.Config, out sender, in inbound, version string) *Daemon {
 		byRequest:    map[string]*prompt{},
 		bySession:    map[string]*prompt{},
 		awaiting:     map[string]*delivery{},
-		watches:      map[string]*watch{},
+		live:         map[string]*liveCard{},
 		pace:         defaultPace,
 		interrupt:    func(s session.Session) error { return s.Interrupt() },
 		version:      version,
@@ -258,9 +261,9 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	wg.Wait()
 	// The live cards go last and on a context of their own: the one thing
 	// a stopping daemon still owes the user is that nothing it left on
-	// their phone claims to be watching something.
+	// their phone claims to be following something.
 	shutdown, done := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
-	d.closeAllWatches(shutdown)
+	d.settleAllLiveCards(shutdown)
 	done()
 	if err := d.reg.Save(); err != nil {
 		debuglog.Printf("save sessions: %v", err)

@@ -91,7 +91,7 @@ messages while Claude Code Channels remain in preview.
 | Session discovery | Choose the exact running session from Feishu/Lark. | ✅ |
 | Notifications | Hear only when Claude needs you or finishes. | ✅ |
 | Remote continuation | Send follow-ups into the selected existing session. | ✅ Preview |
-| Live watch | Follow progress in one card that updates in place. | ✅ |
+| Live session card | One card per session, updating in place while a turn runs. | ✅ |
 | Remote interrupt | Stop the current turn without ending the session. | ✅ macOS/Linux |
 | Permission decisions | Approve or deny requests from Feishu/Lark. | ✅ Optional |
 | QR onboarding | Scan once to connect the app and your machine. | ✅ |
@@ -103,11 +103,16 @@ messages while Claude Code Channels remain in preview.
 
 - **Quiet by default.** Feishu surfaces questions, permission requests, and
   completion summaries—not every file read, command, or tool call.
-- **Exact-session control.** Send `sessions`, choose a running session, and
-  every follow-up goes only there. Ended sessions are never silently replaced.
-- **One live card.** Send `watch` to follow progress in place. Tap
-  **Interrupt**, or send `interrupt`, to stop the current turn without ending
-  the session.
+- **One card per session.** A card opens by itself when a turn starts real
+  work and keeps itself current until the turn settles into its outcome.
+  There is nothing to switch on and nothing to turn off.
+- **Exact-session control.** Reply in a card's box and the message goes to
+  that session and no other. Send `sessions` to bring every session's card
+  back to the bottom of the chat. Ended sessions are never silently replaced.
+- **Honest about what it cannot do.** A session started without the
+  Companion channel gets no reply box, and the card says so in a sentence.
+- **Interrupt.** Tap **Interrupt**, or send `interrupt`, to stop the current
+  turn without ending the session.
 
 ## How it works and security
 

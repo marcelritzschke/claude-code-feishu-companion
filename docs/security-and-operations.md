@@ -157,6 +157,7 @@ diagnostic installation from the default one.
 ## Windows and WSL
 
 WSL and native Windows are separate environments; each needs its own
-binary and `claude-companion init`. On Windows, Claude Companion cannot
-inspect a session's process command line, so the session appears as
-**Remote untested** until its first message confirms the channel.
+binary and `claude-companion init`. Claude Companion reads a session's own
+command line to find out whether that session opted its channel in - from
+procfs on Linux, `ps` on macOS, and the process's own parameter block on
+Windows - so all three say plainly whether a session can be replied to.

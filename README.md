@@ -137,9 +137,7 @@ design rationale.
 - The computer, Claude Code session, Claude Code Feishu Companion daemon, and
   network connection must remain running for remote continuation.
 - WSL and native Windows are separate installations, each needing its own
-  binary and `init`. Remote interrupt is not available on Windows, and remote
-  status remains untested until the first message confirms a session's
-  Channel.
+  binary and `init`. Remote interrupt is not available on Windows.
 
 ## Contributing
 

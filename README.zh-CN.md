@@ -122,8 +122,7 @@ Claude Code Channels 把消息送入选定的运行中会话。
 - 如需远程继续，电脑、Claude Code 会话、Claude Code Feishu Companion 守护进程和网络连接都必须
   保持运行。
 - WSL 与原生 Windows 属于两套独立安装，各自需要单独的程序和 `init`。Windows 不
-  支持远程中断；第一次消息确认 Channel 之前，远程状态会显示为
-  **Remote untested**。
+  支持远程中断。
 
 ## 参与贡献
 

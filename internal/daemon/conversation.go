@@ -55,50 +55,52 @@ func (d *Daemon) onMessage(ctx context.Context, msg feishu.Message) {
 		}, "")
 		return
 	}
-	if number, ok := parseInterrupt(text); ok {
-		d.interruptRequest(ctx, number)
+	if parseInterrupt(text) {
+		d.interruptRequest(ctx)
 		return
 	}
-	if id, ok := d.pickFromList(text); ok {
-		d.selectSession(ctx, id)
-		return
-	}
-
-	s, ok := d.reg.Selected()
-	if !ok {
-		// Nothing is selected, so there is nowhere this message could go
-		// that the user chose. Guessing would break the one promise that
-		// makes remote continuation safe.
-		debuglog.Printf("no session is selected; asking which one")
-		d.say(ctx, "Which session should this go to?")
-		d.showSessions(ctx)
-		return
-	}
-	d.sendToSession(ctx, s, text)
+	d.routeMessage(ctx, text)
 }
 
-// pickFromList resolves a numbered reply against the list the user is
-// actually looking at, not against the current one.
+// routeMessage sends something typed in the conversation, rather than into
+// a card's own reply box, to the session it can only have meant.
 //
-// The distinction matters: a session can end between the list being sent
-// and the reply arriving, and resolving "2" against a list that has since
-// shifted would deliver the message to a session the user never chose.
-// Resolved this way, a stale number names a session that is gone, and
-// being told so is the correct outcome.
-func (d *Daemon) pickFromList(text string) (string, bool) {
-	d.mu.Lock()
-	listed := append([]string(nil), d.lastListed...)
-	d.mu.Unlock()
-
-	i, ok := parsePick(text, len(listed))
-	if !ok {
-		return "", false
+// It never guesses, and with one session running there is nothing to
+// guess: that session is the only place the message could go, and the
+// answer names it. With two, there is a choice, and the user is the one
+// who makes it - on the card of the session they mean, which is the only
+// place that choice is visible while they make it.
+//
+// What this replaced was a remembered selection: a message went wherever
+// the last  sessions  reply had pointed, which was nowhere on screen and
+// hours ago. That is how a stray word ends up in somebody's session.
+func (d *Daemon) routeMessage(ctx context.Context, text string) {
+	open := d.reg.Continuable()
+	if len(open) == 1 {
+		d.sendToSession(ctx, open[0], text)
+		return
 	}
-	return listed[i], true
+	debuglog.Printf("%d sessions could take this message; not guessing", len(open))
+	d.say(ctx, nowhereToSend(len(open), len(d.reg.List())))
 }
 
-// sendToSession pushes a message typed in the conversation into the
-// session the user selected, and tells them what became of it.
+// nowhereToSend says why a message stayed put, in the terms of whichever
+// reason it was.
+func nowhereToSend(continuable, all int) string {
+	switch {
+	case continuable > 1:
+		return fmt.Sprintf("%d sessions here can take a message, so this one stayed put.\n"+
+			"Reply in the box on the card of the session you mean - send  sessions  to bring the cards back.", continuable)
+	case all > 0:
+		return "No session here can take a message: they were started without the Claude Companion channel.\n" +
+			"Start one with  claude --dangerously-load-development-channels server:" + mcp.ServerName + "  to continue it from Feishu."
+	}
+	return "No Claude Code sessions are running on your computer right now.\n" +
+		"Start one with  claude  , and it will appear here."
+}
+
+// sendToSession pushes a message typed in the conversation into the one
+// session that could have meant, and tells them what became of it.
 //
 // The conversation is where this has to be answered: the user typed into a
 // chat window and nothing else on their screen is about to change. A card
@@ -170,18 +172,14 @@ func deliveryAnswer(s session.Session, before session.State) string {
 // session's card is put back at the bottom of the conversation, in the
 // order that puts whatever needs the user first.
 //
-// The numbered text list that follows is the fallback, not the answer:
-// card callbacks are a separate Feishu subscription from card delivery,
-// and where they are missing every reply box is inert and a typed number
-// is the only way left to choose a session.
+// Nothing is numbered and nothing is listed beside them. The card is the
+// address: the session it names is the session its reply box reaches, and
+// that is a thing the user can see rather than a thing they have to have
+// remembered.
 func (d *Daemon) showSessions(ctx context.Context) {
 	sessions := d.reg.List()
 	if len(sessions) == 0 {
-		d.say(ctx, "No Claude Code sessions are running on your computer right now.\n"+
-			"Start one with  claude  , and it will appear here.")
-		d.mu.Lock()
-		d.lastListed = nil
-		d.mu.Unlock()
+		d.say(ctx, nowhereToSend(0, 0))
 		return
 	}
 	// The registry lists whatever needs the user first, so a cut here
@@ -193,36 +191,13 @@ func (d *Daemon) showSessions(ctx context.Context) {
 		sessions = sessions[:maxRecapCards]
 	}
 
-	offered := make([]string, 0, len(sessions))
 	for _, s := range sessions {
-		if s.Remote.Continuable() {
-			offered = append(offered, s.ID)
-		}
 		d.repostSessionCard(ctx, s)
 	}
-	d.mu.Lock()
-	d.lastListed = offered
-	d.mu.Unlock()
-
-	note := notify.PickList(sessions)
 	if rest > 0 {
-		note = joinLines(note, fmt.Sprintf("%d quieter %s not shown.",
+		d.say(ctx, fmt.Sprintf("%d quieter %s not shown.",
 			rest, plural(rest, "session is", "sessions are")))
 	}
-	if note != "" {
-		d.say(ctx, note)
-	}
-}
-
-// joinLines stacks the lines that follow the cards, skipping empty ones.
-func joinLines(lines ...string) string {
-	kept := lines[:0]
-	for _, l := range lines {
-		if l != "" {
-			kept = append(kept, l)
-		}
-	}
-	return strings.Join(kept, "\n")
 }
 
 // plural picks the form that matches a count.
@@ -250,6 +225,10 @@ func (d *Daemon) onCardAction(ctx context.Context, action feishu.CardAction) {
 		d.interruptSession(ctx, act.Session)
 	case notify.ActionSay:
 		d.replyOnCard(ctx, act.Session, action.MessageID, action.Input)
+	case notify.ActionProbe:
+		// Setup asked for this tap and is waiting on it. That it arrived is
+		// the whole of what it means.
+		d.notifyCallbackWaiters()
 	default:
 		debuglog.Printf("ignoring unknown card action %q", act.Kind)
 	}
@@ -279,10 +258,6 @@ func (d *Daemon) replyOnCard(ctx context.Context, id, messageID, text string) {
 		d.showSessions(ctx)
 		return
 	}
-	// Answering a card is also choosing a session: whatever the user types
-	// next, without a card in front of them, must go where they were just
-	// talking.
-	d.reg.Select(id)
 	debuglog.Printf("card reply to %s", s.Describe())
 	before := s.State
 	if !d.pushMessage(ctx, s, text) {
@@ -306,21 +281,6 @@ func sentOnCard(before session.State, text string) string {
 		return ""
 	}
 	return text
-}
-
-// selectSession points the user's next messages at one session and shows
-// that session's card. Which session you are talking to is the whole of
-// what makes this safe, and the card that says so is the same card the
-// answer will come back on.
-func (d *Daemon) selectSession(ctx context.Context, id string) {
-	s, ok := d.reg.Select(id)
-	if !ok {
-		d.say(ctx, "That session has ended.")
-		d.showSessions(ctx)
-		return
-	}
-	d.repostSessionCard(ctx, s)
-	debuglog.Printf("selected %s", s.Describe())
 }
 
 // How long a session has to show a pushed message in its transcript before

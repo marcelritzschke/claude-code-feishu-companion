@@ -149,6 +149,7 @@ func main() {
 		}},
 		{"session/progress", func() (string, error) { return notify.ProgressCard(payload(hook.EventStop), t, notify.Options{}) }},
 		{"question/answered", func() (string, error) { return notify.QuestionAnsweredCard(sess(session.Idle)) }},
+		{"setup/callback-probe", notify.CallbackProbeCard},
 		{"session/resting", func() (string, error) { return notify.RestingSessionCard(sess(session.Idle), t) }},
 		{"session/resting-empty", func() (string, error) {
 			return notify.RestingSessionCard(sess(session.Idle), &transcript.Turn{})

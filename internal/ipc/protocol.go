@@ -39,6 +39,9 @@ const (
 	// TypeAwaitInbound waits for the next Feishu message to arrive, so
 	// setup can prove the return path works. Tooling -> daemon.
 	TypeAwaitInbound = "await_inbound"
+	// TypeAwaitCallback puts a card with a button up and waits for the tap,
+	// so setup can prove that a card can answer back. Tooling -> daemon.
+	TypeAwaitCallback = "await_callback"
 )
 
 // Register introduces the Claude Code session a channel is attached to.
@@ -109,6 +112,21 @@ type Status struct {
 	// and the behaviour is the old one.
 	Build string `json:"build,omitempty"`
 }
+
+// CallbackProof answers TypeAwaitCallback: whether the tap got back here.
+type CallbackProof struct {
+	OK  bool   `json:"ok"`
+	Err string `json:"err,omitempty"`
+}
+
+// CallbackProbeWait is how long a daemon waits for the tap. It is shorter
+// than the inbound wait because the card is already on the screen of the
+// person being asked: this is a tap, not an errand.
+const CallbackProbeWait = 90 * time.Second
+
+// CallbackProbeGrace is what a caller adds to CallbackProbeWait, for the
+// same reason as InboundProbeGrace.
+const CallbackProbeGrace = 15 * time.Second
 
 // InboundProbeWait is how long a daemon holds a TypeAwaitInbound request
 // open before answering that nothing came. It is part of the protocol

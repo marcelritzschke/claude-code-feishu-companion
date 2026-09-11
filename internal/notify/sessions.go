@@ -1,9 +1,6 @@
 package notify
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/mcp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/pathdisp"
 	"github.com/marcelritzschke/claude-code-feishu-companion/internal/session"
@@ -13,31 +10,6 @@ import (
 // runes. It is far more generous than anything else on a card, because
 // approving what you cannot see is the failure this feature must not have.
 const commandFullCap = 900
-
-// PickList is the typed way to choose a session, for when the cards
-// cannot be tapped.
-//
-// Card callbacks are a separate Feishu subscription from card delivery, so
-// an app can send perfectly good session cards while every reply box on
-// them is inert. A plain-text list needs nothing but a chat, which is why
-// it is what the numbered replies resolve against.
-//
-// It is empty when there is nothing to choose between: one session, or
-// none that can be continued, is answered by that session's own card.
-func PickList(sessions []session.Session) string {
-	var lines []string
-	for _, s := range sessions {
-		if !s.Remote.Continuable() {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("%d. %s %s · %s",
-			len(lines)+1, stateMark(s.State), s.Label(), stateWord(s.State)))
-	}
-	if len(lines) < 2 {
-		return ""
-	}
-	return "Reply with a number to send your next message to one of these:\n" + strings.Join(lines, "\n")
-}
 
 // PermissionRelayCard puts a tool approval in front of the user with the
 // two answers Claude Code will accept.
@@ -133,26 +105,20 @@ func PermissionHandledLocallyCard(s session.Session, req mcp.PermissionRequest) 
 	return card("grey", "✔️ Already answered", s.Describe(), bodies, nil, "")
 }
 
-// stateMark and stateWord are the two halves of how a state reads: a mark
-// to scan a list by, and a word to read one session by.
-func stateMark(st session.State) string {
-	switch st {
-	case session.Waiting:
-		return "🟠"
-	case session.Working:
-		return "🟢"
-	default:
-		return "⚪"
-	}
-}
-
-func stateWord(st session.State) string {
-	switch st {
-	case session.Waiting:
-		return "Waiting for you"
-	case session.Working:
-		return "Working"
-	default:
-		return "Idle"
-	}
+// CallbackProbeCard asks the user to tap one button, so setup can find out
+// whether a tap gets back to this computer.
+//
+// Card callbacks are a separate subscription in the Feishu console from
+// card delivery: an app can send perfectly good cards while every button
+// and every reply box on them is inert, and it fails by doing nothing at
+// all. Since a card's reply box is how a session is continued, that is a
+// thing setup has to find out while the user is still at the keyboard,
+// rather than a thing they discover weeks later when a message they sent
+// from a train never arrives.
+func CallbackProbeCard() (string, error) {
+	return card("blue", "Tap to finish setup", "", []string{
+		"Tap the button below. Claude Companion is checking that what you tap and type on a card gets back to your computer.",
+	}, []Button{
+		{Label: "Tap me", Style: stylePrimary, Action: Action{Kind: ActionProbe}},
+	}, "Nothing is run and nothing is changed.")
 }

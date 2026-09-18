@@ -204,7 +204,7 @@ func describeSession() ipc.Register {
 	if dir == "" {
 		dir = cwd
 	}
-	pid := sessionPID()
+	pid := sessionPID(os.Getppid())
 
 	id := os.Getenv("CLAUDE_CODE_SESSION_ID")
 	if id == "" && pid != 0 {
@@ -224,28 +224,23 @@ func describeSession() ipc.Register {
 }
 
 // sessionPID is the Claude Code process this channel belongs to, or zero
-// when that cannot be established.
+// when that cannot be established. parent is the channel's parent process.
 //
-// CLAUDE_PID looks like the answer and often is not. Claude Code sets it
-// for the hooks it runs, and every process a session starts inherits it -
-// so a Claude Code session started from inside another one hands its
-// channel the other session's pid. Reading that process's command line
-// then answers a question about a session this channel has nothing to do
-// with, and answers it confidently: a session that takes remote messages
-// perfectly well is labelled "notifications only", and the daemon refuses
-// to deliver to it.
+// Claude Code starts a channel itself, so the parent is the natural
+// answer - but a wrapper in between (a shell, a launcher script) would be
+// the parent instead, and reading its command line would confidently
+// report "notifications only" for a session that takes messages perfectly
+// well. CLAUDE_CODE_MESSAGING_SOCKET is named after the session's own
+// process, so the two agreeing is what makes the parent the session.
 //
-// CLAUDE_CODE_MESSAGING_SOCKET is named after the session's own process,
-// so the two agreeing is what makes an inherited value this channel's own.
-// They disagree, or the socket is not there to ask: zero, and the honest
-// "unconfirmed" that follows from it.
-func sessionPID() int {
-	pid, err := strconv.Atoi(os.Getenv("CLAUDE_PID"))
-	if err != nil || pid <= 0 {
-		return 0
-	}
-	if pid != messagingSocketPID() {
-		debuglog.Printf("channel: ignoring an inherited CLAUDE_PID (%d)", pid)
+// CLAUDE_PID looks like the answer and is not. Claude Code sets it for
+// hooks and tool commands, not for MCP servers: a channel that relied on it
+// saw no pid at all and called every session "unconfirmed", and one that
+// does see it inherited it from some other session.
+func sessionPID(parent int) int {
+	pid := messagingSocketPID()
+	if pid == 0 || pid != parent {
+		debuglog.Printf("channel: parent %d is not the session named by the messaging socket (%d)", parent, pid)
 		return 0
 	}
 	return pid
